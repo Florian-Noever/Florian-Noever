@@ -93,8 +93,6 @@ jobs:
         bin/linux/AL-ActionImage-Viewer.ImageInformationProvider
         bin/darwin/AL-ActionImage-Viewer.ImageInformationProvider
       vs-marketplace: true
-      azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
-      azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
 ```
 
 Both files repeat the build inputs, since each workflow builds the extension on its own. This extension depends on one that is not on Open VSX, so it leaves `open-vsx` off; one that goes there as well adds `open-vsx: true` and passes the token:
@@ -138,18 +136,19 @@ As for the other workflows, the secrets and the permissions block belong to the 
 
 Azure DevOps retires global personal access tokens on 2026-12-01, and a Marketplace token had to be one. The workflow therefore publishes through Microsoft Entra ID: the job exchanges its GitHub OIDC token for the identity of an Entra app registration through `azure/login`, and `vsce publish --azure-credential` uses that identity. No Marketplace secret is stored anywhere.
 
-Set it up once per account:
+One app registration, *Marketplace publishing* in the [Microsoft Entra admin center](https://entra.microsoft.com), publishes every extension of the account. Its client and tenant ids are the defaults of `azure-client-id` and `azure-tenant-id`, so callers pass neither. It trusts GitHub through a single flexible federated credential under *Certificates & secrets > Federated credentials*: scenario *Other issuer*, issuer `https://token.actions.githubusercontent.com`, audience `api://AzureADTokenExchange` and this claims matching expression:
 
-1. In the [Microsoft Entra admin center](https://entra.microsoft.com), open *App registrations* and create one, for example *Marketplace publishing*, for accounts in this directory only. It needs no Azure subscription. Its overview shows the *Application (client) ID* and *Directory (tenant) ID*.
-2. When the workflow first runs, the Marketplace refuses the app until it is a member of the publisher. The failed job then leaves a notice with the app's Azure DevOps profile id. Add that id under *Members* of the publisher at <https://marketplace.visualstudio.com/manage/publishers> with the *Contributor* role, then re-run the failed jobs.
+```text
+claims['sub'] matches 'repo:Florian-Noever*:environment:vs-marketplace' and claims['repository_owner_id'] eq '242208742' and claims['job_workflow_ref'] matches 'Florian-Noever/Florian-Noever/.github/workflows/vscode-extension-publish.yml@*'
+```
 
-And once per extension repository:
+It accepts the Marketplace job of this workflow in any repository of the account, and nothing else. The owner is matched by its numeric id, which survives renames, and `repo:Florian-Noever*` covers both the name-based subject of repositories created before 2026-07-15 and the immutable `repo:Florian-Noever@242208742/<repository>@<id>` subject of newer ones. So a new extension needs no setup in Entra or in its repository's settings. The job runs in the environment `vs-marketplace`, which GitHub creates on the first run; limiting its deployments to tags matching `v*` is optional hardening.
 
-1. On the app registration, open *Certificates & secrets*, then *Federated credentials*, and add a credential for *GitHub Actions deploying Azure resources*: organization `Florian-Noever`, the repository, entity type *Environment* and environment `vs-marketplace`. The subject is `repo:Florian-Noever/<repository>:environment:vs-marketplace`. One app registration takes up to 20 of these.
-2. In the repository's settings, create the environment `vs-marketplace` and limit its deployments to tags matching `v*`. The Marketplace job runs in it, so only a release tag can use the app's identity. The workflow would create the environment on its own, but without that rule.
-3. Add the repository variables `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` with the two ids, and pass them as in the example. They have to be repository variables, since the calling workflow reads them outside the environment.
+Flexible federated credentials are still a preview. Should they stop working, give each repository a classic credential instead (scenario *GitHub Actions deploying Azure resources*, entity type *Environment*, environment `vs-marketplace`) and check its subject: the portal proposes the immutable format, which only matches repositories created after 2026-07-15 or opted in to it. `gh api /repos/Florian-Noever/<repository>/actions/oidc/customization/sub` shows which format a repository uses.
 
-The run fails before releasing anything if `vs-marketplace` is on but either id is missing.
+The app has to be a member of every publisher it publishes for. The first time it publishes for a publisher, the Marketplace refuses it and the failed job leaves a notice with the app's Azure DevOps profile id. Add that id under *Members* of the publisher at <https://marketplace.visualstudio.com/manage/publishers> with the *Contributor* role, then re-run the failed jobs.
+
+The run fails before releasing anything if `vs-marketplace` is on but a caller empties either id.
 
 ### Open VSX
 
@@ -161,14 +160,14 @@ The Open VSX job runs without the `id-token` permission. ovsx would otherwise tr
 
 ## Why Marketplace publishing can be a reusable workflow
 
-nuget.org's trusted publishing requires the repository in the OIDC `job_workflow_ref` claim to match the `repository` claim, which fails once the publishing job lives in another repository. A Microsoft Entra federated credential only checks the issuer, the audience and the subject, and in a reusable workflow the subject names the calling repository and its environment:
+nuget.org's trusted publishing requires the repository in the OIDC `job_workflow_ref` claim to match the `repository` claim, which fails once the publishing job lives in another repository. A Microsoft Entra federated credential only checks the claims it names, and in a reusable workflow the subject names the calling repository and its environment while `job_workflow_ref` names the shared workflow:
 
 ```text
 sub              = repo:Florian-Noever/al-actionimage-viewer:environment:vs-marketplace
 job_workflow_ref = Florian-Noever/Florian-Noever/.github/workflows/vscode-extension-publish.yml@refs/tags/v1
 ```
 
-so the Marketplace job can stay in the shared workflow.
+so the Marketplace job can stay in the shared workflow, and the credential above even requires it to.
 
 vsce 4 can also publish through the Marketplace's own trusted publishing (`vsce publish --oidc`), without Entra ID. The Marketplace cannot be configured for it yet. Once it can, check which claims it matches before switching, for the same reason as nuget.org.
 

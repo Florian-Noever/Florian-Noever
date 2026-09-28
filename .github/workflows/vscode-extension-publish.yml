@@ -54,19 +54,19 @@ on:
         default: false
         type: boolean
       vs-marketplace:
-        description: Whether the VSIX goes to the Visual Studio Marketplace. Needs azure-client-id and azure-tenant-id
+        description: Whether the VSIX goes to the Visual Studio Marketplace, published by the app registration azure-client-id names
         required: false
         default: false
         type: boolean
       azure-client-id:
-        description: Application (client) id of the Microsoft Entra app registration that publishes to the Visual Studio Marketplace
+        description: Application (client) id of the Microsoft Entra app registration that publishes to the Visual Studio Marketplace. Defaults to the one all Florian-Noever extensions share
         required: false
-        default: ''
+        default: aec9c895-5809-48c2-bc4b-4fae5ffa90d2
         type: string
       azure-tenant-id:
         description: Directory (tenant) id of that app registration
         required: false
-        default: ''
+        default: deee41e6-02c3-420a-8c53-52a2be70c101
         type: string
       open-vsx:
         description: Whether the VSIX goes to Open VSX. Needs the OPEN_VSX_TOKEN secret, and Open VSX must have every extension in extensionDependencies
