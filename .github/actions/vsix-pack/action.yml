@@ -1,0 +1,138 @@
+name: Pack VS Code Extension
+description: Installs a VS Code extension with npm, optionally checks, builds and tests it, packs it into a VSIX with vsce, and checks the VSIX's version and contents
+
+inputs:
+  version:
+    description: Version package.json must carry (without v prefix). Leave empty to skip the check
+    required: false
+    default: ''
+  check-command:
+    description: Command that runs the project's own checks after npm ci, such as linting and unit tests. Leave empty to skip the checks
+    required: false
+    default: ''
+  build-command:
+    description: Command that builds what vscode:prepublish does not, run after npm ci. Leave empty if vscode:prepublish builds everything
+    required: false
+    default: ''
+  test-command:
+    description: Command that runs the extension's tests after the build, under a virtual display on Linux. Leave empty to skip the tests
+    required: false
+    default: ''
+  required-files:
+    description: Paths or glob patterns, one per line and relative to the extension root, that must each match a file in the VSIX. Leave empty to skip the check
+    required: false
+    default: ''
+  pack-dependencies:
+    description: Whether vsce packs the production dependencies from node_modules. Leave false for a bundled extension
+    required: false
+    default: "false"
+  vsce-version:
+    description: Version of @vscode/vsce to pack with
+    required: false
+    default: "4.0.0"
+  output-dir:
+    description: Directory, relative to the workspace, the VSIX is written to
+    required: false
+    default: artifacts
+
+outputs:
+  vsix-path:
+    description: Path of the VSIX, relative to the workspace
+    value: ${{ steps.pack.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check version
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        actual="$(jq -r '.version // empty' package.json)"
+        if [ -n "$VERSION" ] && [ "$actual" != "$VERSION" ]; then
+          echo "::error::package.json is version $actual but the release is $VERSION."
+          exit 1
+        fi
+        if [ -f package-lock.json ]; then
+          locked="$(jq -r '.packages[""].version // .version // empty' package-lock.json)"
+          if [ "$locked" != "$actual" ]; then
+            echo "::error::package-lock.json is version ${locked:-unset} but package.json is $actual. Bump both with npm version <version> --no-git-tag-version."
+            exit 1
+          fi
+        fi
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci
+
+    - name: Check
+      if: ${{ inputs.check-command != '' }}
+      shell: bash
+      run: ${{ inputs.check-command }}
+
+    - name: Build
+      if: ${{ inputs.build-command != '' }}
+      shell: bash
+      run: ${{ inputs.build-command }}
+
+    - name: Test
+      if: ${{ inputs.test-command != '' }}
+      shell: bash
+      env:
+        TEST_COMMAND: ${{ inputs.test-command }}
+      run: |
+        if command -v xvfb-run > /dev/null; then
+          xvfb-run -a bash -eo pipefail -c "$TEST_COMMAND"
+        else
+          bash -eo pipefail -c "$TEST_COMMAND"
+        fi
+
+    - name: Pack
+      id: pack
+      shell: bash
+      env:
+        VSCE_VERSION: ${{ inputs.vsce-version }}
+        PACK_DEPENDENCIES: ${{ inputs.pack-dependencies }}
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+      run: |
+        path="$OUTPUT_DIR/$(jq -r .name package.json)-$(jq -r .version package.json).vsix"
+        args=(package --out "$path")
+        if [ "$PACK_DEPENDENCIES" != "true" ]; then
+          args+=(--no-dependencies)
+        fi
+        mkdir -p "$OUTPUT_DIR"
+        npx --yes "@vscode/vsce@$VSCE_VERSION" "${args[@]}"
+        echo "path=$path" >> "$GITHUB_OUTPUT"
+
+    - name: Check contents
+      shell: bash
+      env:
+        VSIX_PATH: ${{ steps.pack.outputs.path }}
+        REQUIRED_FILES: ${{ inputs.required-files }}
+      run: |
+        mapfile -t entries < <(unzip -Z1 "$VSIX_PATH")
+        echo "::group::Contents of $VSIX_PATH"
+        printf '%s\n' "${entries[@]}"
+        echo "::endgroup::"
+
+        failed=0
+        while IFS= read -r pattern; do
+          pattern="${pattern#"${pattern%%[![:space:]]*}"}"
+          pattern="${pattern%"${pattern##*[![:space:]]}"}"
+          if [ -z "$pattern" ]; then
+            continue
+          fi
+
+          found=false
+          for entry in "${entries[@]}"; do
+            if [[ "$entry" == extension/$pattern ]]; then
+              found=true
+              break
+            fi
+          done
+          if [ "$found" != true ]; then
+            echo "::error::$VSIX_PATH has no file matching $pattern."
+            failed=1
+          fi
+        done <<< "$REQUIRED_FILES"
+        exit "$failed"

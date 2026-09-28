@@ -1,0 +1,17 @@
+version: 2
+
+updates:
+  # Keeps the third-party actions referenced by the shared actions and reusable
+  # workflows current, so consuming repositories inherit the updates by moving tag.
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns:
+          - "*"
