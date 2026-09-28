@@ -47,10 +47,4 @@
   <img src="https://github-profile-trophy.vercel.app/?username=Florian-Noever&theme=flat&no-frame=true&no-bg=true&margin-w=8&column=4&rank=-?,-C" alt="GitHub trophies">
 </picture>
 
-<br><br>
-
-<sub>
-C# things · Windows things · ASCII things · game/mod things · floppy-disk energy
-</sub>
-
 </div>
