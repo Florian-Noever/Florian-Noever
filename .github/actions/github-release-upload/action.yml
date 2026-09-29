@@ -1,5 +1,5 @@
 name: Upload to GitHub Release
-description: Uploads files to the GitHub release that triggered the workflow and attests their build provenance. The job needs the permissions contents write, id-token write and attestations write
+description: Uploads files to the GitHub release that triggered the workflow and, in a public repository, attests their build provenance. The job needs the permissions contents write, id-token write and attestations write
 
 inputs:
   files:
@@ -15,7 +15,9 @@ runs:
         fail_on_unmatched_files: true
         files: ${{ inputs.files }}
 
+    # GitHub only stores attestations of private repositories on GitHub Enterprise Cloud.
     - name: Attest build provenance
+      if: ${{ !github.event.repository.private }}
       uses: actions/attest-build-provenance@v4
       with:
         subject-path: ${{ inputs.files }}

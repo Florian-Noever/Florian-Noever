@@ -1,0 +1,73 @@
+name: .NET Framework Publish
+
+on:
+  workflow_call:
+    inputs:
+      project-path:
+        description: Project of the app to build. Its exe is the only file released, so it must embed every library it uses
+        required: true
+        type: string
+      test-project:
+        description: Project, solution or folder to run dotnet test on before the build. Leave empty to skip the tests
+        required: false
+        default: ''
+        type: string
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+jobs:
+  pack:
+    name: Pack
+    runs-on: windows-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Resolve version
+        id: version
+        uses: Florian-Noever/Florian-Noever/.github/actions/resolve-version@v1
+        with:
+          tag: ${{ github.event.release.tag_name }}
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Pack
+        id: pack
+        uses: Florian-Noever/Florian-Noever/.github/actions/dotnet-framework-pack@v1
+        with:
+          project-path: ${{ inputs.project-path }}
+          version: ${{ steps.version.outputs.value }}
+          test-project: ${{ inputs.test-project }}
+
+      - name: Upload exe
+        uses: actions/upload-artifact@v7
+        with:
+          name: exe
+          path: ${{ steps.pack.outputs.exe-path }}
+          if-no-files-found: error
+
+  release:
+    name: Upload to release
+    needs: pack
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Download exe
+        uses: actions/download-artifact@v8
+        with:
+          name: exe
+          path: artifacts
+
+      - name: Upload to release
+        uses: Florian-Noever/Florian-Noever/.github/actions/github-release-upload@v1
+        with:
+          files: artifacts/*.exe

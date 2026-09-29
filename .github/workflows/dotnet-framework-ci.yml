@@ -1,0 +1,51 @@
+name: .NET Framework CI
+
+on:
+  workflow_call:
+    inputs:
+      project-path:
+        description: Project of the app to build. Its exe must embed every library it uses
+        required: true
+        type: string
+      test-project:
+        description: Project, solution or folder to run dotnet test on before the build. Leave empty to skip the tests
+        required: false
+        default: ''
+        type: string
+      retention-days:
+        description: How long to keep the built exe
+        required: false
+        default: 14
+        type: number
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+jobs:
+  build:
+    name: Build
+    runs-on: windows-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Pack
+        id: pack
+        uses: Florian-Noever/Florian-Noever/.github/actions/dotnet-framework-pack@v1
+        with:
+          project-path: ${{ inputs.project-path }}
+          version: 0.0.0-ci.${{ github.run_number }}
+          test-project: ${{ inputs.test-project }}
+
+      - name: Keep exe
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.pack.outputs.exe-path }}
+          archive: false
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}

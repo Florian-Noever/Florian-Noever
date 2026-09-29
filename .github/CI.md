@@ -1,6 +1,6 @@
 # Shared CI
 
-Reusable workflows and composite actions shared across `Florian-Noever` projects. Each workflow covers one kind of project: `dotnet-ci.yml` tests and publishes a .NET project, and the `vscode-extension-*` workflows check, test, pack and publish a VS Code extension. A repository that has both calls both and hands files from one to the other as an artifact.
+Reusable workflows and composite actions shared across `Florian-Noever` projects. Each workflow covers one kind of project: `dotnet-ci.yml` tests and publishes a .NET project, the `dotnet-framework-*` workflows test, build and release a .NET Framework app as a single exe, and the `vscode-extension-*` workflows check, test, pack and publish a VS Code extension. A repository that has both calls both and hands files from one to the other as an artifact.
 
 Workflows only wire jobs together. Everything bigger than a single command, such as packing, uploading to a release or publishing to a registry, lives in a composite action of its own, so it can be reused without the workflow around it.
 
@@ -15,12 +15,13 @@ uses: Florian-Noever/Florian-Noever/.github/actions/vsix-pack@v1
 
 | Action | Used by | Purpose |
 | --- | --- | --- |
-| `resolve-version` | vscode-extension | Validates a release tag and reports the version it carries |
-| `setup-dotnet` | dotnet | Installs the SDK and restores the NuGet cache |
+| `resolve-version` | vscode-extension, dotnet-framework | Validates a release tag and reports the version it carries |
+| `setup-dotnet` | dotnet, `dotnet-framework-pack` | Installs the SDK and restores the NuGet cache |
 | `dotnet-publish` | dotnet | Publishes a .NET project once per publish profile |
+| `dotnet-framework-pack` | dotnet-framework | Builds a .NET Framework app with MSBuild after its optional tests, and checks that its exe carries the version and needs no other file |
 | `vsix-pack` | vscode-extension | Installs, optionally checks, builds and tests an extension, packs it with vsce and checks the VSIX's version and contents |
 | `vscode-test` | vscode-extension, `vsix-pack` | Runs an extension's tests under a virtual display |
-| `github-release-upload` | vscode-extension | Uploads files to the release that triggered the run and attests them |
+| `github-release-upload` | vscode-extension, dotnet-framework | Uploads files to the release that triggered the run and, in a public repository, attests them |
 | `vs-marketplace-publish` | vscode-extension | Publishes a VSIX to the Visual Studio Marketplace through Microsoft Entra ID |
 | `open-vsx-verify` | vscode-extension | Checks the token, the namespace and the dependencies before anything is released |
 | `open-vsx-publish` | vscode-extension | Publishes a VSIX to Open VSX with a token |
@@ -29,6 +30,8 @@ uses: Florian-Noever/Florian-Noever/.github/actions/vsix-pack@v1
 | Reusable workflow | Purpose |
 | --- | --- |
 | `dotnet-ci.yml` | Optional tests of a .NET project, and its output published per publish profile and kept as an artifact |
+| `dotnet-framework-ci.yml` | Optional tests and an MSBuild build of a .NET Framework app, whose exe is kept as a preview |
+| `dotnet-framework-publish.yml` | .NET Framework app tested and built from the release tag, its exe uploaded to the release and, in a public repository, attested |
 | `vscode-extension-ci.yml` | Optional checks and VS Code tests, and a checked preview VSIX |
 | `vscode-extension-publish.yml` | VSIX built and tested from the release tag, uploaded and attested, then published to the Visual Studio Marketplace and Open VSX |
 | `dependabot-automerge.yml` | Squash-merges a Dependabot minor or patch update once the other jobs of the calling workflow passed |
@@ -195,6 +198,79 @@ Open VSX refuses an extension whose `extensionDependencies` it cannot resolve, a
 
 The Open VSX job runs without the `id-token` permission. ovsx would otherwise try Open VSX's trusted publishing on its own instead of the token.
 
+## Consuming: a .NET Framework app
+
+The `dotnet-framework-*` workflows are the .NET Framework counterpart of `dotnet-ci.yml`, for a Windows app whose only release is its exe on the GitHub release: no installer, no store, no package registry.
+
+`.github/workflows/ci.yml`:
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: Florian-Noever/Florian-Noever/.github/workflows/dotnet-framework-ci.yml@v1
+    with:
+      project-path: AL-App-Extractor/AL-App-Extractor.csproj
+      test-project: NavAppPackageHelper.Tests/NavAppPackageHelper.Tests.csproj
+```
+
+`.github/workflows/publish.yml`:
+
+```yaml
+name: Publish Release
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: dotnet-framework-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  publish:
+    uses: Florian-Noever/Florian-Noever/.github/workflows/dotnet-framework-publish.yml@v1
+    with:
+      project-path: AL-App-Extractor/AL-App-Extractor.csproj
+      test-project: NavAppPackageHelper.Tests/NavAppPackageHelper.Tests.csproj
+```
+
+Both files pass the same inputs, since each workflow builds the app on its own. An app without tests leaves out `test-project`.
+
+### Building and testing
+
+`dotnet-framework-pack` builds `project-path` with the .NET Framework MSBuild of the runner's Visual Studio, which `microsoft/setup-msbuild` finds, rather than with `dotnet build`: the .NET SDK's MSBuild cannot embed non-string resources, such as a form's icon, in a .NET Framework app and fails with `MSB3822`/`MSB3823`. `windows-latest` comes with Visual Studio 2026, so C# 14 projects build as well. Before that, `test-project` runs `dotnet test` on a project, solution or folder, which works for .NET Framework test projects that don't embed such resources themselves.
+
+The exe is the only file released, so it has to embed every library it uses, for example with [Costura.Fody](https://github.com/Fody/Costura), and the run fails before anything is released if the build leaves a DLL next to it. The `.exe.config` and the `.pdb` stay behind as well, so the app has to run without them; Costura resolves the embedded libraries by name, which makes the binding redirects in the `.exe.config` unnecessary. The exe keeps its name, so a new version can replace the old file in place.
+
+In CI, the `Build` job builds every push as version `0.0.0-ci.<run number>` and keeps the exe as an artifact for `retention-days`, 14 by default, so each push leaves a build to try out.
+
+### Releasing
+
+A release is built from its tag, which must be a version such as `v1.2.3` or `v1.2.3-beta.1`. The version reaches the exe through `-p:Version`, so the project has to generate its assembly info, as SDK-style projects do by default, and the run fails before releasing anything if the exe's product version differs from the tag.
+
+The `Pack` job tests and builds the app from the tag without write permissions, and the `Upload to release` job attaches the exe to the release. Prereleases get their exe as well, since there is no store to hold them back from. Do not turn on immutable releases, since the exe is attached after the release is published. As for the other workflows, the permissions block belongs to the calling repository.
+
+The exe is only attested in a public repository. GitHub stores attestations of private repositories only on GitHub Enterprise Cloud and fails the step otherwise, so `github-release-upload` skips it there; a repository made public gets attested releases from then on.
+
 ## Consuming: Dependabot auto-merge
 
 `dependabot-automerge.yml` merges a Dependabot pull request once the repository's own checks passed. Add it as the last job of the repository's CI, after every other job:
@@ -239,6 +315,6 @@ git push origin v1.1.0 && git push -f origin v1
 
 Things to remember:
 
-- The workflows, and actions that use other actions such as `vsix-pack`, reference them by their **absolute** `@v1` path. A relative `./` path would resolve against the calling repository, which does not contain these actions. Bump those refs with a new major.
+- The workflows, and actions that use other actions such as `vsix-pack` and `dotnet-framework-pack`, reference them by their **absolute** `@v1` path. A relative `./` path would resolve against the calling repository, which does not contain these actions. Bump those refs with a new major.
 - The vsce and ovsx versions are pinned as input defaults: `vsce-version` of `vsix-pack` and `vs-marketplace-publish`, and `ovsx-version` of `open-vsx-publish`. Dependabot does not see them, so bump them by hand and keep the two vsce pins equal.
 - Whoever can move `v1` decides what runs with the publishing identity of every extension that calls `vscode-extension-publish.yml@v1`. Pin the call to a commit SHA if you would rather not have it move implicitly.

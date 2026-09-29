@@ -1,0 +1,80 @@
+name: Pack .NET Framework App
+description: Builds a .NET Framework app with MSBuild after its optional tests, and checks that its exe carries the version and needs no other file
+
+inputs:
+  project-path:
+    description: Project of the app to build. Its exe is the only file released, so it must embed every library it uses
+    required: true
+  version:
+    description: Version stamped into the exe, without a leading v
+    required: true
+  test-project:
+    description: Project, solution or folder to run dotnet test on before the build. Leave empty to skip the tests
+    required: false
+    default: ''
+  output-dir:
+    description: Directory the exe is copied to
+    required: false
+    default: artifacts
+
+outputs:
+  exe-path:
+    description: Absolute path of the exe in output-dir
+    value: ${{ steps.check.outputs.exe-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup .NET
+      uses: Florian-Noever/Florian-Noever/.github/actions/setup-dotnet@v1
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v3
+
+    - name: Test
+      if: ${{ inputs.test-project != '' }}
+      shell: pwsh
+      env:
+        TEST_PROJECT: ${{ inputs.test-project }}
+      run: |
+        dotnet test $env:TEST_PROJECT -clp:ForceConsoleColor
+        if ($LASTEXITCODE -ne 0) { throw "dotnet test failed with exit code $LASTEXITCODE." }
+
+    - name: Build
+      shell: pwsh
+      env:
+        PROJECT_PATH: ${{ inputs.project-path }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        msbuild $env:PROJECT_PATH -restore -p:Configuration=Release "-p:Version=$env:VERSION" -p:ContinuousIntegrationBuild=true -nodeReuse:false -nologo -clp:ForceConsoleColor
+        if ($LASTEXITCODE -ne 0) { throw "msbuild failed with exit code $LASTEXITCODE." }
+
+    - name: Check exe
+      id: check
+      shell: pwsh
+      env:
+        PROJECT_PATH: ${{ inputs.project-path }}
+        VERSION: ${{ inputs.version }}
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+      run: |
+        $targetPath = msbuild $env:PROJECT_PATH -getProperty:TargetPath -p:Configuration=Release -nologo
+        if ($LASTEXITCODE -ne 0) { throw "Could not read the TargetPath of $env:PROJECT_PATH." }
+        $exe = "$($targetPath | Select-Object -Last 1)".Trim()
+        if ([IO.Path]::GetExtension($exe) -ne '.exe') { throw "$env:PROJECT_PATH builds '$exe', not an exe." }
+        if (-not (Test-Path -LiteralPath $exe)) { throw "The build did not create $exe." }
+
+        $libraries = @(Get-ChildItem -LiteralPath (Split-Path $exe) -Filter *.dll -File)
+        if ($libraries.Count -gt 0) {
+            throw "Only the exe is released, but $($libraries.Name -join ', ') would have to ship next to it. Embed them into the exe, for example with Costura.Fody."
+        }
+
+        $productVersion = "$((Get-Item -LiteralPath $exe).VersionInfo.ProductVersion)"
+        if ($productVersion -ne $env:VERSION -and -not $productVersion.StartsWith("$env:VERSION+")) {
+            throw "$exe carries version '$productVersion', not $env:VERSION. The project has to generate its assembly info for -p:Version to reach the exe."
+        }
+
+        $outputDir = [IO.Path]::GetFullPath($env:OUTPUT_DIR, $env:GITHUB_WORKSPACE)
+        New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+        $target = Join-Path $outputDir (Split-Path $exe -Leaf)
+        Copy-Item -LiteralPath $exe -Destination $target
+        "exe-path=$target" >> $env:GITHUB_OUTPUT
