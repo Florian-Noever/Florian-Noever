@@ -1,0 +1,42 @@
+name: Merge Dependabot Pull Request
+description: Squash-merges the Dependabot pull request that triggered the run when it is a minor or patch update, and leaves any other update for a review. The job needs the permissions contents write and pull-requests write
+
+inputs:
+  attempts:
+    description: How often the merge is tried. A merge fails while GitHub still settles a base branch that another pull request just changed
+    required: false
+    default: "5"
+
+runs:
+  using: composite
+  steps:
+    - name: Read update metadata
+      id: metadata
+      uses: dependabot/fetch-metadata@v3
+
+    - name: Merge
+      if: ${{ steps.metadata.outputs.update-type == 'version-update:semver-minor' || steps.metadata.outputs.update-type == 'version-update:semver-patch' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_URL: ${{ github.event.pull_request.html_url }}
+        ATTEMPTS: ${{ inputs.attempts }}
+      run: |
+        for attempt in $(seq 1 "$ATTEMPTS"); do
+          if gh pr merge --squash "$PR_URL"; then
+            exit 0
+          fi
+          if [ "$attempt" -lt "$ATTEMPTS" ]; then
+            echo "Merge attempt $attempt failed, trying again in 10 seconds."
+            sleep 10
+          fi
+        done
+        exit 1
+
+    - name: Leave for review
+      if: ${{ steps.metadata.outputs.update-type != 'version-update:semver-minor' && steps.metadata.outputs.update-type != 'version-update:semver-patch' }}
+      shell: bash
+      env:
+        DEPENDENCIES: ${{ steps.metadata.outputs.dependency-names }}
+        UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+      run: echo "::notice::The update of ${DEPENDENCIES} is ${UPDATE_TYPE:-of an unknown type}, not a minor or patch update, so the pull request waits for a review."

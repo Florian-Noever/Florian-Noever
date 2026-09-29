@@ -15,7 +15,4 @@ jobs:
 
     steps:
       - name: Merge Dependabot pull request
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge --squash "$PR_URL"
+        uses: Florian-Noever/Florian-Noever/.github/actions/dependabot-merge@v1
