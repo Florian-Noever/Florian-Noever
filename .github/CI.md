@@ -30,6 +30,7 @@ uses: Florian-Noever/Florian-Noever/.github/actions/vsix-pack@v1
 | `dotnet-ci.yml` | Optional tests of a .NET project, and its output published per publish profile and kept as an artifact |
 | `vscode-extension-ci.yml` | Optional checks and VS Code tests, and a checked preview VSIX |
 | `vscode-extension-publish.yml` | VSIX built and tested from the release tag, uploaded and attested, then published to the Visual Studio Marketplace and Open VSX |
+| `dependabot-automerge.yml` | Squash-merges a Dependabot pull request once the other jobs of the calling workflow passed |
 
 ## Consuming: a VS Code extension
 
@@ -192,6 +193,23 @@ Open VSX publishes with a token. Create one under *Settings > Access Tokens* at 
 Open VSX refuses an extension whose `extensionDependencies` it cannot resolve, and many extensions depend on one that is only on the Visual Studio Marketplace. So when `open-vsx` is on, `open-vsx-verify` fails the run before anything is released unless the namespace and every dependency are on Open VSX, and also if the token is missing. Leave `open-vsx` off for such an extension.
 
 The Open VSX job runs without the `id-token` permission. ovsx would otherwise try Open VSX's trusted publishing on its own instead of the token.
+
+## Consuming: Dependabot auto-merge
+
+`dependabot-automerge.yml` merges a Dependabot pull request once the repository's own checks passed. Add it as the last job of the repository's CI, after every other job:
+
+```yaml
+  automerge:
+    needs: [bridge, extension]
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: Florian-Noever/Florian-Noever/.github/workflows/dependabot-automerge.yml@v1
+```
+
+Nothing is merged unless every job in `needs` succeeded. The merge only happens on `pull_request` runs that Dependabot started for its own pull request; on every other run the job is skipped, and a pull request that someone else pushed commits to is left for a review. Dependabot's runs get a read-only token, and the `permissions` of the calling job are what let this one merge. The repository has to allow squash merging.
+
+Dependabot itself is set up in the repository's `.github/dependabot.yml`. For NuGet, point `directories` at the folders that directly hold the solution or project files: Dependabot does not search subfolders for them.
 
 ## Why Marketplace publishing can be a reusable workflow
 
