@@ -1,0 +1,111 @@
+name: .NET CI
+
+on:
+  workflow_call:
+    inputs:
+      test-project:
+        description: Project, solution or folder to run dotnet test on. Leave empty to skip the tests
+        required: false
+        default: ''
+        type: string
+      publish-project:
+        description: Project to publish once per entry of publish-profiles. Leave empty to skip publishing
+        required: false
+        default: ''
+        type: string
+      publish-profiles:
+        description: Publish profiles to publish publish-project with, one per line
+        required: false
+        default: ''
+        type: string
+      version:
+        description: Version stamped into the published assemblies, such as a release tag, whose leading v is dropped. Leave empty to keep the project's own version
+        required: false
+        default: ''
+        type: string
+      artifact-name:
+        description: Name of the artifact that keeps the published output for later jobs of the calling workflow. Leave empty to keep nothing
+        required: false
+        default: ''
+        type: string
+      artifact-path:
+        description: Directory, relative to the repository root, that the published output ends up in and the artifact is made of
+        required: false
+        default: ''
+        type: string
+      dotnet-version:
+        description: SDK version selector
+        required: false
+        default: "10.0.x"
+        type: string
+      retention-days:
+        description: How long to keep the artifact
+        required: false
+        default: 1
+        type: number
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+jobs:
+  test:
+    name: Test
+    if: ${{ inputs.test-project != '' }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: Florian-Noever/Florian-Noever/.github/actions/setup-dotnet@v1
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Test
+        env:
+          TEST_PROJECT: ${{ inputs.test-project }}
+        run: dotnet test "$TEST_PROJECT" -clp:ForceConsoleColor
+
+  publish:
+    name: Publish
+    if: ${{ inputs.publish-project != '' }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: Florian-Noever/Florian-Noever/.github/actions/setup-dotnet@v1
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Resolve version
+        id: version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: echo "value=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        uses: Florian-Noever/Florian-Noever/.github/actions/dotnet-publish@v1
+        with:
+          project-path: ${{ inputs.publish-project }}
+          publish-profiles: ${{ inputs.publish-profiles }}
+          version: ${{ steps.version.outputs.value }}
+
+      - name: Keep published output
+        if: ${{ inputs.artifact-name != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.artifact-path }}
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}

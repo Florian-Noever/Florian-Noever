@@ -1,6 +1,6 @@
 # Shared CI
 
-Reusable workflows and composite actions shared across `Florian-Noever` projects.
+Reusable workflows and composite actions shared across `Florian-Noever` projects. Each workflow covers one kind of project: `dotnet-ci.yml` tests and publishes a .NET project, and the `vscode-extension-*` workflows check, test, pack and publish a VS Code extension. A repository that has both calls both and hands files from one to the other as an artifact.
 
 Consumers reference them by tag:
 
@@ -14,18 +14,19 @@ uses: Florian-Noever/Florian-Noever/.github/actions/vsix-pack@v1
 | Action | Used by | Purpose |
 | --- | --- | --- |
 | `resolve-version` | vscode-extension | Validates a release tag and reports the version it carries |
-| `setup-dotnet` | vscode-extension | Installs the SDK and restores the NuGet cache |
-| `dotnet-publish` | vscode-extension | Publishes a .NET project once per publish profile |
+| `setup-dotnet` | dotnet | Installs the SDK and restores the NuGet cache |
+| `dotnet-publish` | dotnet | Publishes a .NET project once per publish profile |
 | `vsix-pack` | vscode-extension | Installs, optionally checks, builds and tests an extension, packs it with vsce and checks the VSIX's version and contents |
 
 | Reusable workflow | Purpose |
 | --- | --- |
-| `vscode-extension-ci.yml` | Optional checks and .NET tests, optional VS Code tests, and a checked preview VSIX |
+| `dotnet-ci.yml` | Optional tests of a .NET project, and its output published per publish profile and kept as an artifact |
+| `vscode-extension-ci.yml` | Optional checks and VS Code tests, and a checked preview VSIX |
 | `vscode-extension-publish.yml` | VSIX built and tested from the release tag, uploaded and attested, then published to the Visual Studio Marketplace and Open VSX |
 
 ## Consuming: a VS Code extension
 
-`.github/workflows/ci.yml`:
+`.github/workflows/ci.yml`, here for an extension that ships a .NET helper:
 
 ```yaml
 name: CI
@@ -43,15 +44,24 @@ permissions:
   contents: read
 
 jobs:
-  ci:
-    uses: Florian-Noever/Florian-Noever/.github/workflows/vscode-extension-ci.yml@v1
+  bridge:
+    uses: Florian-Noever/Florian-Noever/.github/workflows/dotnet-ci.yml@v1
     with:
-      dotnet-project: AL-ActionImage-Viewer.ImageInformationProvider/AL-ActionImage-Viewer.ImageInformationProvider/AL-ActionImage-Viewer.ImageInformationProvider.csproj
-      dotnet-publish-profiles: |
+      test-project: AL-ActionImage-Viewer.ImageInformationProvider
+      publish-project: AL-ActionImage-Viewer.ImageInformationProvider/AL-ActionImage-Viewer.ImageInformationProvider/AL-ActionImage-Viewer.ImageInformationProvider.csproj
+      publish-profiles: |
         win32
         linux
         darwin
-      dotnet-test-project: AL-ActionImage-Viewer.ImageInformationProvider
+      artifact-name: bridge
+      artifact-path: bin
+
+  extension:
+    needs: bridge
+    uses: Florian-Noever/Florian-Noever/.github/workflows/vscode-extension-ci.yml@v1
+    with:
+      artifact-name: bridge
+      artifact-path: bin
       test-command: npm test
       required-files: |
         bin/win32/AL-ActionImage-Viewer.ImageInformationProvider.exe
@@ -78,15 +88,25 @@ permissions:
   attestations: write
 
 jobs:
-  publish:
-    uses: Florian-Noever/Florian-Noever/.github/workflows/vscode-extension-publish.yml@v1
+  bridge:
+    uses: Florian-Noever/Florian-Noever/.github/workflows/dotnet-ci.yml@v1
     with:
-      dotnet-project: AL-ActionImage-Viewer.ImageInformationProvider/AL-ActionImage-Viewer.ImageInformationProvider/AL-ActionImage-Viewer.ImageInformationProvider.csproj
-      dotnet-publish-profiles: |
+      test-project: AL-ActionImage-Viewer.ImageInformationProvider
+      publish-project: AL-ActionImage-Viewer.ImageInformationProvider/AL-ActionImage-Viewer.ImageInformationProvider/AL-ActionImage-Viewer.ImageInformationProvider.csproj
+      publish-profiles: |
         win32
         linux
         darwin
-      dotnet-test-project: AL-ActionImage-Viewer.ImageInformationProvider
+      version: ${{ github.event.release.tag_name }}
+      artifact-name: bridge
+      artifact-path: bin
+
+  publish:
+    needs: bridge
+    uses: Florian-Noever/Florian-Noever/.github/workflows/vscode-extension-publish.yml@v1
+    with:
+      artifact-name: bridge
+      artifact-path: bin
       test-command: npm test
       required-files: |
         bin/win32/AL-ActionImage-Viewer.ImageInformationProvider.exe
@@ -95,7 +115,7 @@ jobs:
       vs-marketplace: true
 ```
 
-Both files repeat the build inputs, since each workflow builds the extension on its own. This extension depends on one that is not on Open VSX, so it leaves `open-vsx` off; one that goes there as well adds `open-vsx: true` and passes the token:
+An extension without a helper leaves out the `bridge` job and the `artifact-*` inputs. Both files repeat the build inputs, since each workflow builds the extension on its own. This extension depends on one that is not on Open VSX, so it leaves `open-vsx` off; one that goes there as well adds `open-vsx: true` and passes the token:
 
 ```yaml
       open-vsx: true
@@ -107,21 +127,31 @@ Both files repeat the build inputs, since each workflow builds the extension on 
 
 The extension is an npm project at the repository root. `vsix-pack` runs `npm ci` and then `vsce package`, which runs the extension's `vscode:prepublish` script, so whatever that script builds needs no input here. The VSIX is written as `artifacts/<name>-<version>.vsix`, and before anything else the action checks that `package-lock.json` carries the same version as `package.json`.
 
-- `dotnet-project` is a .NET project the extension ships, such as a helper it runs. It is published with `-c Release` once per entry of `dotnet-publish-profiles`, before the extension is built. Where the output goes is up to the profiles or the project, for example a target that runs after `Publish` and copies the executable into `bin/<platform>/`, and `.vscodeignore` must not exclude it.
-- `dotnet-test-project` runs `dotnet test` on a project, solution or folder.
+- `artifact-name` names an artifact of an earlier job of the same run, such as a helper built by `dotnet-ci.yml`, that is downloaded into `artifact-path` before anything is built or tested.
 - `check-command` runs after `npm ci`, typically linting and unit tests that `vscode:prepublish` does not already cover.
 - `build-command` runs after `npm ci` for anything else `vscode:prepublish` does not build.
 - `test-command` runs the extension's tests, for example with `@vscode/test-electron`, after the build. It runs under `xvfb-run`, since VS Code needs a display even when it is tested.
 - `required-files` lists paths or glob patterns, relative to the extension root, that must each match a file in the VSIX, such as the helper for every platform. The run fails if one is missing, and the log always shows what the VSIX contains.
 - `pack-dependencies` stays `false` for a bundled extension, which vsce then packs with `--no-dependencies`. Set it for an extension that ships its `node_modules`.
 
-In CI, the `Check` job runs the .NET tests and `check-command`, the `Test` job publishes the helper and runs `test-command`, and the `Package` job packs the extension. Each job only runs when it has something to do, apart from `Package`, which keeps the VSIX as an artifact for `retention-days`, so each push leaves a build to try out.
+In CI, the `Check` job runs `check-command`, the `Test` job runs `test-command`, and the `Package` job packs the extension. Each job only runs when it has something to do, apart from `Package`, which keeps the VSIX as an artifact for `retention-days`, so each push leaves a build to try out.
+
+### Shipping a .NET helper
+
+`dotnet-ci.yml` builds the helper, independently of what uses it:
+
+- `test-project` runs `dotnet test` on a project, solution or folder.
+- `publish-project` is published with `-c Release` once per entry of `publish-profiles`. Where the output goes is up to the profiles or the project, for example a target that runs after `Publish` and copies the executable into `bin/<platform>/`.
+- `version`, such as the release tag, is stamped into the published assemblies; a leading `v` is dropped.
+- `artifact-name` keeps the directory `artifact-path` as an artifact for `retention-days`, one day by default, which is long enough for the later jobs of the same run.
+
+The extension's job needs the helper's job, and the `vscode-extension-*` workflows download the artifact into the same `artifact-path`, so the extension is tested and packed with the binaries that job built; `.vscodeignore` must not exclude them. A failing .NET test therefore stops the extension's jobs as well. Artifacts do not keep the executable bit, so the extension has to set it on its helper before running it on Linux and macOS.
 
 ### Releasing
 
 A release is built from its tag, which must be a plain version such as `v1.2.3`: VS Code extensions carry no prerelease labels in their version. `package.json` and `package-lock.json` must both carry that version, so bump them together with `npm version 1.2.3 --no-git-tag-version`. The run fails before releasing anything otherwise.
 
-The `Pack` job runs everything CI runs, in one job: the .NET tests, the helper published with the release version stamped into it, `check-command`, `build-command`, `test-command`, packing and the content check. The VSIX that passed is uploaded to the release and attested, and unless the release is a pre-release, the same file then goes to every registry that is switched on:
+The `Pack` job runs everything the extension's CI runs, in one job: `check-command`, `build-command`, `test-command`, packing and the content check, with the helper published from the same tag. The VSIX that passed is uploaded to the release and attested, and unless the release is a pre-release, the same file then goes to every registry that is switched on:
 
 - `vs-marketplace: true` publishes it to the **Visual Studio Marketplace**;
 - `open-vsx: true` publishes it to **Open VSX**.

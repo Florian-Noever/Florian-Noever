@@ -3,33 +3,23 @@ name: VS Code Extension CI
 on:
   workflow_call:
     inputs:
-      dotnet-project:
-        description: .NET project the extension ships, such as a helper it runs. It is published once per entry of dotnet-publish-profiles before the extension is built. Leave empty to skip it
-        required: false
-        default: ''
-        type: string
-      dotnet-publish-profiles:
-        description: Publish profiles to publish dotnet-project with, one per line
-        required: false
-        default: ''
-        type: string
-      dotnet-test-project:
-        description: Project, solution or folder to run dotnet test on. Leave empty to skip the .NET tests
-        required: false
-        default: ''
-        type: string
-      dotnet-version:
-        description: .NET SDK version selector, used when dotnet-project or dotnet-test-project is set
-        required: false
-        default: "10.0.x"
-        type: string
       node-version:
         description: Node.js version selector
         required: false
         default: "24"
         type: string
+      artifact-name:
+        description: Artifact of an earlier job of the calling workflow that is downloaded before the extension is built, such as helper binaries another workflow built. Leave empty to skip it
+        required: false
+        default: ''
+        type: string
+      artifact-path:
+        description: Directory, relative to the repository root, the artifact is downloaded into
+        required: false
+        default: .
+        type: string
       check-command:
-        description: Command that runs the project's own checks after npm ci, such as linting and unit tests. Leave empty to skip it
+        description: Command that runs the project's own checks after npm ci, such as linting and unit tests. Leave empty to skip the check job
         required: false
         default: ''
         type: string
@@ -59,14 +49,10 @@ on:
         default: 14
         type: number
 
-env:
-  DOTNET_NOLOGO: "true"
-  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
-
 jobs:
   check:
     name: Check
-    if: ${{ inputs.check-command != '' || inputs.dotnet-test-project != '' }}
+    if: ${{ inputs.check-command != '' }}
     runs-on: ubuntu-latest
 
     permissions:
@@ -76,31 +62,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup .NET
-        if: ${{ inputs.dotnet-test-project != '' }}
-        uses: Florian-Noever/Florian-Noever/.github/actions/setup-dotnet@v1
-        with:
-          dotnet-version: ${{ inputs.dotnet-version }}
-
-      - name: Test .NET
-        if: ${{ inputs.dotnet-test-project != '' }}
-        env:
-          TEST_PROJECT: ${{ inputs.dotnet-test-project }}
-        run: dotnet test "$TEST_PROJECT" -clp:ForceConsoleColor
-
       - name: Setup Node.js
-        if: ${{ inputs.check-command != '' }}
         uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
           cache: npm
 
       - name: Install dependencies
-        if: ${{ inputs.check-command != '' }}
         run: npm ci
 
       - name: Check
-        if: ${{ inputs.check-command != '' }}
         run: ${{ inputs.check-command }}
 
   test:
@@ -121,18 +92,12 @@ jobs:
           node-version: ${{ inputs.node-version }}
           cache: npm
 
-      - name: Setup .NET
-        if: ${{ inputs.dotnet-project != '' }}
-        uses: Florian-Noever/Florian-Noever/.github/actions/setup-dotnet@v1
+      - name: Download artifact
+        if: ${{ inputs.artifact-name != '' }}
+        uses: actions/download-artifact@v8
         with:
-          dotnet-version: ${{ inputs.dotnet-version }}
-
-      - name: Publish .NET project
-        if: ${{ inputs.dotnet-project != '' }}
-        uses: Florian-Noever/Florian-Noever/.github/actions/dotnet-publish@v1
-        with:
-          project-path: ${{ inputs.dotnet-project }}
-          publish-profiles: ${{ inputs.dotnet-publish-profiles }}
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.artifact-path }}
 
       - name: Install dependencies
         run: npm ci
@@ -163,18 +128,12 @@ jobs:
           node-version: ${{ inputs.node-version }}
           cache: npm
 
-      - name: Setup .NET
-        if: ${{ inputs.dotnet-project != '' }}
-        uses: Florian-Noever/Florian-Noever/.github/actions/setup-dotnet@v1
+      - name: Download artifact
+        if: ${{ inputs.artifact-name != '' }}
+        uses: actions/download-artifact@v8
         with:
-          dotnet-version: ${{ inputs.dotnet-version }}
-
-      - name: Publish .NET project
-        if: ${{ inputs.dotnet-project != '' }}
-        uses: Florian-Noever/Florian-Noever/.github/actions/dotnet-publish@v1
-        with:
-          project-path: ${{ inputs.dotnet-project }}
-          publish-profiles: ${{ inputs.dotnet-publish-profiles }}
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.artifact-path }}
 
       - name: Pack
         id: pack
