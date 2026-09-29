@@ -1,0 +1,21 @@
+name: Test VS Code Extension
+description: Runs a command that tests a VS Code extension, under a virtual display wherever xvfb-run is available, since VS Code needs a display even when it is tested
+
+inputs:
+  command:
+    description: Command that runs the tests, such as npm test
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Test
+      shell: bash
+      env:
+        TEST_COMMAND: ${{ inputs.command }}
+      run: |
+        if command -v xvfb-run > /dev/null; then
+          xvfb-run -a bash -eo pipefail -c "$TEST_COMMAND"
+        else
+          bash -eo pipefail -c "$TEST_COMMAND"
+        fi

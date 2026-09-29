@@ -88,18 +88,12 @@ jobs:
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
 
-      - name: Resolve version
-        id: version
-        env:
-          VERSION: ${{ inputs.version }}
-        run: echo "value=${VERSION#v}" >> "$GITHUB_OUTPUT"
-
       - name: Publish
         uses: Florian-Noever/Florian-Noever/.github/actions/dotnet-publish@v1
         with:
           project-path: ${{ inputs.publish-project }}
           publish-profiles: ${{ inputs.publish-profiles }}
-          version: ${{ steps.version.outputs.value }}
+          version: ${{ inputs.version }}
 
       - name: Keep published output
         if: ${{ inputs.artifact-name != '' }}

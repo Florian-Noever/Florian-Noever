@@ -1,0 +1,57 @@
+name: Publish to the Visual Studio Marketplace
+description: Publishes a VSIX to the Visual Studio Marketplace as a Microsoft Entra app registration, signed in through the job's GitHub OIDC token. The job needs the id-token write permission and has to match a federated credential of the app
+
+inputs:
+  vsix-path:
+    description: Path of the VSIX to publish
+    required: true
+  azure-client-id:
+    description: Application (client) id of the app registration that publishes
+    required: true
+  azure-tenant-id:
+    description: Directory (tenant) id of that app registration
+    required: true
+  node-version:
+    description: Node.js version selector for vsce
+    required: false
+    default: "24"
+  vsce-version:
+    description: Version of @vscode/vsce to publish with
+    required: false
+    default: "4.0.0"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: ${{ inputs.node-version }}
+        package-manager-cache: false
+
+    - name: Install vsce
+      shell: bash
+      env:
+        VSCE_VERSION: ${{ inputs.vsce-version }}
+      run: npm install --global "@vscode/vsce@$VSCE_VERSION"
+
+    - name: Log in to Microsoft Entra ID
+      id: login
+      uses: azure/login@v3
+      with:
+        client-id: ${{ inputs.azure-client-id }}
+        tenant-id: ${{ inputs.azure-tenant-id }}
+        allow-no-subscriptions: true
+
+    - name: Publish
+      shell: bash
+      env:
+        VSIX_PATH: ${{ inputs.vsix-path }}
+      run: vsce publish --packagePath "$VSIX_PATH" --azure-credential --skip-duplicate
+
+    - name: Report publishing identity
+      if: ${{ failure() && steps.login.outcome == 'success' }}
+      shell: bash
+      run: |
+        id="$(az rest -u https://app.vssps.visualstudio.com/_apis/profile/profiles/me --resource 499b84ac-1321-427f-aa17-267ca6975798 --query id -o tsv)" || exit 0
+        echo "::notice::The Entra app publishes as the Azure DevOps profile $id. If the Visual Studio Marketplace refused it, add that id to the publisher's members as a Contributor, then re-run the failed jobs."

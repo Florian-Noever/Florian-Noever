@@ -77,15 +77,9 @@ runs:
 
     - name: Test
       if: ${{ inputs.test-command != '' }}
-      shell: bash
-      env:
-        TEST_COMMAND: ${{ inputs.test-command }}
-      run: |
-        if command -v xvfb-run > /dev/null; then
-          xvfb-run -a bash -eo pipefail -c "$TEST_COMMAND"
-        else
-          bash -eo pipefail -c "$TEST_COMMAND"
-        fi
+      uses: Florian-Noever/Florian-Noever/.github/actions/vscode-test@v1
+      with:
+        command: ${{ inputs.test-command }}
 
     - name: Pack
       id: pack

@@ -2,6 +2,8 @@
 
 Reusable workflows and composite actions shared across `Florian-Noever` projects. Each workflow covers one kind of project: `dotnet-ci.yml` tests and publishes a .NET project, and the `vscode-extension-*` workflows check, test, pack and publish a VS Code extension. A repository that has both calls both and hands files from one to the other as an artifact.
 
+Workflows only wire jobs together. Everything bigger than a single command, such as packing, uploading to a release or publishing to a registry, lives in a composite action of its own, so it can be reused without the workflow around it.
+
 Consumers reference them by tag:
 
 ```yaml
@@ -17,6 +19,11 @@ uses: Florian-Noever/Florian-Noever/.github/actions/vsix-pack@v1
 | `setup-dotnet` | dotnet | Installs the SDK and restores the NuGet cache |
 | `dotnet-publish` | dotnet | Publishes a .NET project once per publish profile |
 | `vsix-pack` | vscode-extension | Installs, optionally checks, builds and tests an extension, packs it with vsce and checks the VSIX's version and contents |
+| `vscode-test` | vscode-extension, `vsix-pack` | Runs an extension's tests under a virtual display |
+| `github-release-upload` | vscode-extension | Uploads files to the release that triggered the run and attests them |
+| `vs-marketplace-publish` | vscode-extension | Publishes a VSIX to the Visual Studio Marketplace through Microsoft Entra ID |
+| `open-vsx-verify` | vscode-extension | Checks the token, the namespace and the dependencies before anything is released |
+| `open-vsx-publish` | vscode-extension | Publishes a VSIX to Open VSX with a token |
 
 | Reusable workflow | Purpose |
 | --- | --- |
@@ -178,13 +185,11 @@ Flexible federated credentials are still a preview. Should they stop working, gi
 
 The app has to be a member of every publisher it publishes for. The first time it publishes for a publisher, the Marketplace refuses it and the failed job leaves a notice with the app's Azure DevOps profile id. Add that id under *Members* of the publisher at <https://marketplace.visualstudio.com/manage/publishers> with the *Contributor* role, then re-run the failed jobs.
 
-The run fails before releasing anything if `vs-marketplace` is on but a caller empties either id.
-
 ### Open VSX
 
 Open VSX publishes with a token. Create one under *Settings > Access Tokens* at <https://open-vsx.org> and store it as the `OPEN_VSX_TOKEN` secret. The publisher's namespace has to exist on Open VSX; create it once with `npx ovsx create-namespace <publisher> -p <token>`.
 
-Open VSX refuses an extension whose `extensionDependencies` it cannot resolve, and many extensions depend on one that is only on the Visual Studio Marketplace. So when `open-vsx` is on, the run fails before releasing anything unless the namespace and every dependency are on Open VSX, and also if the token is missing. Leave `open-vsx` off for such an extension.
+Open VSX refuses an extension whose `extensionDependencies` it cannot resolve, and many extensions depend on one that is only on the Visual Studio Marketplace. So when `open-vsx` is on, `open-vsx-verify` fails the run before anything is released unless the namespace and every dependency are on Open VSX, and also if the token is missing. Leave `open-vsx` off for such an extension.
 
 The Open VSX job runs without the `id-token` permission. ovsx would otherwise try Open VSX's trusted publishing on its own instead of the token.
 
@@ -213,6 +218,6 @@ git push origin v1.1.0 && git push -f origin v1
 
 Things to remember:
 
-- The workflows reference the actions by their **absolute** `@v1` path. A relative `./` path would resolve against the calling repository, which does not contain these actions. Bump those refs with a new major.
-- The vsce and ovsx versions are pinned: `VSCE_VERSION` and `OVSX_VERSION` in `vscode-extension-publish.yml`, and the `vsce-version` default of `vsix-pack`. Dependabot does not see them, so bump them by hand and keep the two vsce pins equal.
+- The workflows, and actions that use other actions such as `vsix-pack`, reference them by their **absolute** `@v1` path. A relative `./` path would resolve against the calling repository, which does not contain these actions. Bump those refs with a new major.
+- The vsce and ovsx versions are pinned as input defaults: `vsce-version` of `vsix-pack` and `vs-marketplace-publish`, and `ovsx-version` of `open-vsx-publish`. Dependabot does not see them, so bump them by hand and keep the two vsce pins equal.
 - Whoever can move `v1` decides what runs with the publishing identity of every extension that calls `vscode-extension-publish.yml@v1`. Pin the call to a commit SHA if you would rather not have it move implicitly.

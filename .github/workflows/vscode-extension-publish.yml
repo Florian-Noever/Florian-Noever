@@ -68,10 +68,6 @@ on:
         description: Open VSX access token of a member of the publisher's namespace
         required: false
 
-env:
-  VSCE_VERSION: "4.0.0"
-  OVSX_VERSION: "1.2.0"
-
 jobs:
   pack:
     name: Pack
@@ -91,45 +87,14 @@ jobs:
           tag: ${{ github.event.release.tag_name }}
           allow-prerelease: "false"
 
-      - name: Check publishing settings
-        if: ${{ inputs.vs-marketplace || inputs.open-vsx }}
-        env:
-          VS_MARKETPLACE: ${{ inputs.vs-marketplace }}
-          AZURE_CLIENT_ID: ${{ inputs.azure-client-id }}
-          AZURE_TENANT_ID: ${{ inputs.azure-tenant-id }}
-          OPEN_VSX: ${{ inputs.open-vsx }}
-          OPEN_VSX_TOKEN: ${{ secrets.OPEN_VSX_TOKEN }}
-        run: |
-          failed=0
-          if [ "$VS_MARKETPLACE" = "true" ] && { [ -z "$AZURE_CLIENT_ID" ] || [ -z "$AZURE_TENANT_ID" ]; }; then
-            echo "::error::vs-marketplace is on but azure-client-id or azure-tenant-id is empty, so publishing to the Visual Studio Marketplace would fail after the release."
-            failed=1
-          fi
-          if [ "$OPEN_VSX" = "true" ] && [ -z "$OPEN_VSX_TOKEN" ]; then
-            echo "::error::open-vsx is on but the OPEN_VSX_TOKEN secret is not set, so publishing to Open VSX would fail after the release."
-            failed=1
-          fi
-          exit "$failed"
-
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Check Open VSX dependencies
+      - name: Verify Open VSX
         if: ${{ inputs.open-vsx }}
-        run: |
-          failed=0
-          namespace="$(jq -r .publisher package.json)"
-          if ! curl -fsS -o /dev/null "https://open-vsx.org/api/$namespace"; then
-            echo "::error::Open VSX has no namespace $namespace. Create it once with ovsx create-namespace $namespace."
-            failed=1
-          fi
-          for id in $(jq -r '(.extensionDependencies // [])[]' package.json); do
-            if ! curl -fsS -o /dev/null "https://open-vsx.org/api/${id%%.*}/${id#*.}"; then
-              echo "::error::$id is not on Open VSX, which refuses extensions whose extensionDependencies it cannot resolve."
-              failed=1
-            fi
-          done
-          exit "$failed"
+        uses: Florian-Noever/Florian-Noever/.github/actions/open-vsx-verify@v1
+        with:
+          token: ${{ secrets.OPEN_VSX_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -154,14 +119,7 @@ jobs:
           test-command: ${{ inputs.test-command }}
           required-files: ${{ inputs.required-files }}
           pack-dependencies: ${{ inputs.pack-dependencies }}
-          vsce-version: ${{ env.VSCE_VERSION }}
           output-dir: artifacts
-
-      - name: Report pre-release
-        if: ${{ github.event.release.prerelease && (inputs.vs-marketplace || inputs.open-vsx) }}
-        env:
-          TAG: ${{ github.event.release.tag_name }}
-        run: echo "::notice::$TAG is a pre-release, so it goes to the GitHub release only and not to the Visual Studio Marketplace or Open VSX."
 
       - name: Upload VSIX
         uses: actions/upload-artifact@v7
@@ -187,16 +145,10 @@ jobs:
           name: vsix
           path: artifacts
 
-      - name: Upload to Release
-        uses: softprops/action-gh-release@v3
+      - name: Upload to release
+        uses: Florian-Noever/Florian-Noever/.github/actions/github-release-upload@v1
         with:
-          fail_on_unmatched_files: true
           files: ${{ needs.pack.outputs.vsix-path }}
-
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@v4
-        with:
-          subject-path: ${{ needs.pack.outputs.vsix-path }}
 
   vs-marketplace:
     name: Visual Studio Marketplace
@@ -215,33 +167,13 @@ jobs:
           name: vsix
           path: artifacts
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: ${{ inputs.node-version }}
-          package-manager-cache: false
-
-      - name: Install vsce
-        run: npm install --global "@vscode/vsce@$VSCE_VERSION"
-
-      - name: Log in to Microsoft Entra ID
-        id: login
-        uses: azure/login@v3
-        with:
-          client-id: ${{ inputs.azure-client-id }}
-          tenant-id: ${{ inputs.azure-tenant-id }}
-          allow-no-subscriptions: true
-
       - name: Publish
-        env:
-          VSIX_PATH: ${{ needs.pack.outputs.vsix-path }}
-        run: vsce publish --packagePath "$VSIX_PATH" --azure-credential --skip-duplicate
-
-      - name: Report publishing identity
-        if: ${{ failure() && steps.login.outcome == 'success' }}
-        run: |
-          id="$(az rest -u https://app.vssps.visualstudio.com/_apis/profile/profiles/me --resource 499b84ac-1321-427f-aa17-267ca6975798 --query id -o tsv)" || exit 0
-          echo "::notice::The Entra app publishes as the Azure DevOps profile $id. If the Visual Studio Marketplace refused it, add that id to the publisher's members as a Contributor, then re-run the failed jobs."
+        uses: Florian-Noever/Florian-Noever/.github/actions/vs-marketplace-publish@v1
+        with:
+          vsix-path: ${{ needs.pack.outputs.vsix-path }}
+          azure-client-id: ${{ inputs.azure-client-id }}
+          azure-tenant-id: ${{ inputs.azure-tenant-id }}
+          node-version: ${{ inputs.node-version }}
 
   open-vsx:
     name: Open VSX
@@ -249,7 +181,6 @@ jobs:
     if: ${{ inputs.open-vsx && !github.event.release.prerelease }}
     runs-on: ubuntu-latest
 
-    # Without id-token, ovsx uses the token instead of switching to trusted publishing on its own.
     permissions: {}
 
     steps:
@@ -259,14 +190,9 @@ jobs:
           name: vsix
           path: artifacts
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: ${{ inputs.node-version }}
-          package-manager-cache: false
-
       - name: Publish
-        env:
-          OVSX_PAT: ${{ secrets.OPEN_VSX_TOKEN }}
-          VSIX_PATH: ${{ needs.pack.outputs.vsix-path }}
-        run: npx --yes "ovsx@$OVSX_VERSION" publish "$VSIX_PATH" --skip-duplicate
+        uses: Florian-Noever/Florian-Noever/.github/actions/open-vsx-publish@v1
+        with:
+          vsix-path: ${{ needs.pack.outputs.vsix-path }}
+          token: ${{ secrets.OPEN_VSX_TOKEN }}
+          node-version: ${{ inputs.node-version }}

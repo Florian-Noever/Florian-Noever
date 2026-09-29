@@ -107,9 +107,9 @@ jobs:
         run: ${{ inputs.build-command }}
 
       - name: Test
-        env:
-          TEST_COMMAND: ${{ inputs.test-command }}
-        run: xvfb-run -a bash -eo pipefail -c "$TEST_COMMAND"
+        uses: Florian-Noever/Florian-Noever/.github/actions/vscode-test@v1
+        with:
+          command: ${{ inputs.test-command }}
 
   package:
     name: Package

@@ -1,0 +1,21 @@
+name: Upload to GitHub Release
+description: Uploads files to the GitHub release that triggered the workflow and attests their build provenance. The job needs the permissions contents write, id-token write and attestations write
+
+inputs:
+  files:
+    description: Paths or glob patterns of the files to upload, one per line
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Upload to release
+      uses: softprops/action-gh-release@v3
+      with:
+        fail_on_unmatched_files: true
+        files: ${{ inputs.files }}
+
+    - name: Attest build provenance
+      uses: actions/attest-build-provenance@v4
+      with:
+        subject-path: ${{ inputs.files }}

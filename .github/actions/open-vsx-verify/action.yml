@@ -1,0 +1,39 @@
+name: Verify Open VSX
+description: Checks, before anything is released, that an extension can be published to Open VSX - a token is set, the publisher's namespace exists and Open VSX has every extension in extensionDependencies
+
+inputs:
+  token:
+    description: Open VSX access token that will publish the extension
+    required: false
+    default: ''
+  package-json:
+    description: package.json of the extension
+    required: false
+    default: package.json
+
+runs:
+  using: composite
+  steps:
+    - name: Verify
+      shell: bash
+      env:
+        OPEN_VSX_TOKEN: ${{ inputs.token }}
+        PACKAGE_JSON: ${{ inputs.package-json }}
+      run: |
+        failed=0
+        if [ -z "$OPEN_VSX_TOKEN" ]; then
+          echo "::error::No Open VSX token is set, so publishing to Open VSX would fail after the release."
+          failed=1
+        fi
+        namespace="$(jq -r .publisher "$PACKAGE_JSON")"
+        if ! curl -fsS -o /dev/null "https://open-vsx.org/api/$namespace"; then
+          echo "::error::Open VSX has no namespace $namespace. Create it once with ovsx create-namespace $namespace."
+          failed=1
+        fi
+        for id in $(jq -r '(.extensionDependencies // [])[]' "$PACKAGE_JSON"); do
+          if ! curl -fsS -o /dev/null "https://open-vsx.org/api/${id%%.*}/${id#*.}"; then
+            echo "::error::$id is not on Open VSX, which refuses extensions whose extensionDependencies it cannot resolve."
+            failed=1
+          fi
+        done
+        exit "$failed"

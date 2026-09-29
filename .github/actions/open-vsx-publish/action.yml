@@ -1,0 +1,35 @@
+name: Publish to Open VSX
+description: Publishes a VSIX to Open VSX with an access token. Run it in a job without the id-token permission, or ovsx switches to Open VSX's trusted publishing on its own
+
+inputs:
+  vsix-path:
+    description: Path of the VSIX to publish
+    required: true
+  token:
+    description: Open VSX access token of a member of the publisher's namespace
+    required: true
+  node-version:
+    description: Node.js version selector for ovsx
+    required: false
+    default: "24"
+  ovsx-version:
+    description: Version of ovsx to publish with
+    required: false
+    default: "1.2.0"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: ${{ inputs.node-version }}
+        package-manager-cache: false
+
+    - name: Publish
+      shell: bash
+      env:
+        OVSX_PAT: ${{ inputs.token }}
+        OVSX_VERSION: ${{ inputs.ovsx-version }}
+        VSIX_PATH: ${{ inputs.vsix-path }}
+      run: npx --yes "ovsx@$OVSX_VERSION" publish "$VSIX_PATH" --skip-duplicate

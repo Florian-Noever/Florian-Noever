@@ -9,7 +9,7 @@ inputs:
     description: Publish profiles to publish the project with, one per line. The profiles, or the project, decide where the output goes
     required: true
   version:
-    description: Version stamped into the published assemblies (without v prefix). Leave empty to keep the project's own version
+    description: Version stamped into the published assemblies, such as a release tag, whose leading v is dropped. Leave empty to keep the project's own version
     required: false
     default: ''
 
@@ -23,6 +23,7 @@ runs:
         PUBLISH_PROFILES: ${{ inputs.publish-profiles }}
         VERSION: ${{ inputs.version }}
       run: |
+        version="${VERSION#v}"
         published=0
         while IFS= read -r profile; do
           profile="${profile//[[:space:]]/}"
@@ -31,8 +32,8 @@ runs:
           fi
 
           args=("$PROJECT_PATH" -c Release "-p:PublishProfile=$profile" -p:ContinuousIntegrationBuild=true -clp:ForceConsoleColor)
-          if [ -n "$VERSION" ]; then
-            args+=("-p:Version=$VERSION")
+          if [ -n "$version" ]; then
+            args+=("-p:Version=$version")
           fi
 
           echo "::group::Publish $PROJECT_PATH with $profile"
