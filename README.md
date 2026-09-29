@@ -16,13 +16,45 @@
 
 <br><br>
 
-![BC-User-Personalization](https://socialify.git.ci/Florian-Noever/BC-User-Personalization/image?custom_language=Microsoft&description=1&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FFlorian-Noever%2FBC-User-Personalization%2F3210bd333245f5fa042816a2e533ddf533011a3d%2Fassets%2Ficon.svg&name=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto)
-![BC-Session-Management](https://socialify.git.ci/Florian-Noever/BC-Session-Management/image?custom_language=Microsoft&description=1&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FFlorian-Noever%2FBC-Session-Management%2Ff6a697f9ab04afe00841d79637a80aeac1a8619d%2Fassets%2Ficon.svg&name=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto)
-
 ![al-actionimage-viewer](https://socialify.git.ci/Florian-Noever/al-actionimage-viewer/image?custom_language=VSCode&description=1&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FFlorian-Noever%2Fal-actionimage-viewer%2Fdee1ef59f5fe941267bdbd75ed754270daf8e584%2Fassets%2Ficon.svg&name=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto)
 
-![create-typescript-bc](https://socialify.git.ci/Florian-Noever/create-typescript-bc/image?description=1&forks=1&issues=1&language=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto)
-![bc-controladdin-helper](https://socialify.git.ci/Florian-Noever/bc-controladdin-helper/image?description=1&forks=1&issues=1&language=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto)
+<br>
+
+<p align="center">
+  <a href="https://github.com/Florian-Noever/BC-User-Personalization">
+    <img
+      src="https://socialify.git.ci/Florian-Noever/BC-User-Personalization/image?custom_language=Microsoft&description=1&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FFlorian-Noever%2FBC-User-Personalization%2F3210bd333245f5fa042816a2e533ddf533011a3d%2Fassets%2Ficon.svg&name=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto"
+      width="49%"
+      alt="BC-User-Personalization"
+    />
+  </a>
+  <a href="https://github.com/Florian-Noever/BC-Session-Management">
+    <img
+      src="https://socialify.git.ci/Florian-Noever/BC-Session-Management/image?custom_language=Microsoft&description=1&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FFlorian-Noever%2FBC-Session-Management%2Ff6a697f9ab04afe00841d79637a80aeac1a8619d%2Fassets%2Ficon.svg&name=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto"
+      width="49%"
+      alt="BC-Session-Management"
+    />
+  </a>
+</p>
+
+<br>
+
+<p align="center">
+  <a href="https://github.com/Florian-Noever/create-typescript-bc">
+    <img
+      src="https://socialify.git.ci/Florian-Noever/create-typescript-bc/image?description=1&forks=1&issues=1&language=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto"
+      width="49%"
+      alt="create-typescript-bc"
+    />
+  </a>
+  <a href="https://github.com/Florian-Noever/bc-controladdin-helper">
+    <img
+      src="https://socialify.git.ci/Florian-Noever/bc-controladdin-helper/image?description=1&forks=1&issues=1&language=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto"
+      width="49%"
+      alt="bc-controladdin-helper"
+    />
+  </a>
+</p>
 
 <br><br>
 
