@@ -20,7 +20,7 @@
 
 <br>
 
-<div align="center">
+<p align="center">
   <a href="https://github.com/Florian-Noever/BC-User-Personalization">
     <img
       src="https://socialify.git.ci/Florian-Noever/BC-User-Personalization/image?custom_language=Microsoft&description=1&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FFlorian-Noever%2FBC-User-Personalization%2F3210bd333245f5fa042816a2e533ddf533011a3d%2Fassets%2Ficon.svg&name=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto"
@@ -35,11 +35,11 @@
       alt="BC-Session-Management"
     />
   </a>
-</div>
+</p>
 
 <br>
 
-<div align="center">
+<p align="center">
   <a href="https://github.com/Florian-Noever/create-typescript-bc">
     <img
       src="https://socialify.git.ci/Florian-Noever/create-typescript-bc/image?description=1&forks=1&issues=1&language=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto"
@@ -54,7 +54,7 @@
       alt="bc-controladdin-helper"
     />
   </a>
-</div>
+</p>
 
 <br><br>
 
