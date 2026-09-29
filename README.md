@@ -8,7 +8,7 @@
 
 <a href="https://www.npmjs.com/~floriannoever"><img width="46" src="https://cdn.simpleicons.org/npm/CB3837" alt="npm" /></a>
 &nbsp;&nbsp;&nbsp;
-<a href="https://www.nuget.org/profiles/Florian-Noever"><img width="46" src="https://cdn.simpleicons.org/nuget/004880" alt="NuGet" /></a>
+<a href="https://www.linkedin.com/in/florian-noever/"><img width="46" src="https://upload.wikimedia.org/wikipedia/commons/8/81/LinkedIn_icon.svg" alt="LinkedIn" /></a>
 &nbsp;&nbsp;&nbsp;
 <a href="https://marketplace.visualstudio.com/publishers/Florian-Noever"><img width="46" src="https://upload.wikimedia.org/wikipedia/commons/2/25/Microsoft_icon.svg" alt="Visual Studio Marketplace" /></a>
 &nbsp;&nbsp;&nbsp;
