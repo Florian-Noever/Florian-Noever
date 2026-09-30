@@ -6,13 +6,13 @@
 
 <br><br>
 
-<a href="https://www.npmjs.com/~floriannoever"><img width="46" src="https://cdn.simpleicons.org/npm/CB3837" alt="npm" /></a>
+<a href="https://florian-noever.carrd.co/"><img width="46" src="https://cdn.simpleicons.org/carrd/596CAF" alt="Carrd.co" /></a>
 &nbsp;&nbsp;&nbsp;
 <a href="https://www.linkedin.com/in/florian-noever/"><img width="46" src="https://upload.wikimedia.org/wikipedia/commons/8/81/LinkedIn_icon.svg" alt="LinkedIn" /></a>
 &nbsp;&nbsp;&nbsp;
-<a href="https://marketplace.visualstudio.com/publishers/Florian-Noever"><img width="46" src="https://upload.wikimedia.org/wikipedia/commons/2/25/Microsoft_icon.svg" alt="Visual Studio Marketplace" /></a>
+<a href="https://www.npmjs.com/~floriannoever"><img width="46" src="https://cdn.simpleicons.org/npm/CB3837" alt="npm" /></a>
 &nbsp;&nbsp;&nbsp;
-<a href="https://florian-noever.carrd.co/"><img width="46" src="https://cdn.simpleicons.org/carrd/596CAF" alt="Carrd.co" /></a>
+<a href="https://marketplace.visualstudio.com/publishers/Florian-Noever"><img width="46" src="https://upload.wikimedia.org/wikipedia/commons/2/25/Microsoft_icon.svg" alt="Visual Studio Marketplace" /></a>
 
 <br><br>
 
