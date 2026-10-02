@@ -16,7 +16,7 @@
 
 <br><br>
 
-![al-actionimage-viewer](https://socialify.git.ci/Florian-Noever/al-actionimage-viewer/image?custom_language=VSCode&description=1&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FFlorian-Noever%2Fal-actionimage-viewer%2Fdee1ef59f5fe941267bdbd75ed754270daf8e584%2Fassets%2Ficon.svg&name=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto)
+[![al-actionimage-viewer](https://socialify.git.ci/Florian-Noever/al-actionimage-viewer/image?custom_language=VSCode&description=1&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FFlorian-Noever%2Fal-actionimage-viewer%2Fdee1ef59f5fe941267bdbd75ed754270daf8e584%2Fassets%2Ficon.svg&name=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto)](https://github.com/Florian-Noever/al-actionimage-viewer)
 
 <br>
 
