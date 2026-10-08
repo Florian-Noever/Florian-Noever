@@ -21,6 +21,25 @@
 <br>
 
 <p align="center">
+  <a href="https://github.com/Florian-Noever/xliff-auto-sync">
+    <img
+      src="https://socialify.git.ci/Florian-Noever/xliff-auto-sync/image?description=1&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FFlorian-Noever%2Fxliff-auto-sync%2Frefs%2Fheads%2Fmain%2Fassets%2Ficon.png&name=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto"
+      width="49%"
+      alt="XLIFF Auto Sync"
+    />
+  </a>
+  <a href="https://github.com/Florian-Noever/branch-compare-decorations">
+    <img
+      src="https://socialify.git.ci/Florian-Noever/branch-compare-decorations/image?description=1&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FFlorian-Noever%2Fbranch-compare-decorations%2Fd9ea18c15ee3616a524049a7121f66273e8d12d9%2Fassets%2Ficon.svg&name=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto"
+      width="49%"
+      alt="Branch Compare Decorations"
+    />
+  </a>
+</p>
+
+<br>
+
+<p align="center">
   <a href="https://github.com/Florian-Noever/BC-User-Personalization">
     <img
       src="https://socialify.git.ci/Florian-Noever/BC-User-Personalization/image?custom_language=Microsoft&description=1&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FFlorian-Noever%2FBC-User-Personalization%2F3210bd333245f5fa042816a2e533ddf533011a3d%2Fassets%2Ficon.svg&name=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto"
