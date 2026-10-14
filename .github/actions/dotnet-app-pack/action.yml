@@ -1,0 +1,89 @@
+name: Pack .NET App
+description: Publishes a .NET app for one runtime, and checks that its exe carries the version and needs no library next to it
+
+inputs:
+  project-path:
+    description: Project of the app to publish. Its exe is the only file released, so it has to be published as a single file
+    required: true
+  runtime:
+    description: Runtime identifier to publish for (e.g. win-x64)
+    required: true
+  version:
+    description: Version stamped into the exe, without a leading v
+    required: true
+  publish-profile:
+    description: Publish profile to publish with. Its runtime identifier and publish directory are overridden. Leave empty to use the project's own publish settings
+    required: false
+    default: ''
+  dotnet-version:
+    description: SDK version selector passed to setup-dotnet (e.g. 10.0.x)
+    required: false
+    default: "10.0.x"
+  output-dir:
+    description: Directory the exe is copied to, as <assembly name>-<runtime>.exe
+    required: false
+    default: artifacts
+
+outputs:
+  exe-path:
+    description: Absolute path of the exe in output-dir
+    value: ${{ steps.check.outputs.exe-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup .NET
+      uses: Florian-Noever/Florian-Noever/.github/actions/setup-dotnet@v1
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+
+    - name: Publish
+      id: publish
+      shell: pwsh
+      env:
+        PROJECT_PATH: ${{ inputs.project-path }}
+        RUNTIME: ${{ inputs.runtime }}
+        VERSION: ${{ inputs.version }}
+        PUBLISH_PROFILE: ${{ inputs.publish-profile }}
+      run: |
+        $publishDir = [IO.Path]::Combine($env:RUNNER_TEMP, 'publish', $env:RUNTIME)
+        $arguments = @($env:PROJECT_PATH, '-c', 'Release', '-r', $env:RUNTIME, "-p:Version=$env:VERSION", "-p:PublishDir=$publishDir/", '-p:ContinuousIntegrationBuild=true', '-clp:ForceConsoleColor')
+        if ($env:PUBLISH_PROFILE) { $arguments += "-p:PublishProfile=$env:PUBLISH_PROFILE" }
+        dotnet publish @arguments
+        if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE." }
+        "dir=$publishDir" >> $env:GITHUB_OUTPUT
+
+    - name: Check exe
+      id: check
+      shell: pwsh
+      env:
+        PROJECT_PATH: ${{ inputs.project-path }}
+        RUNTIME: ${{ inputs.runtime }}
+        VERSION: ${{ inputs.version }}
+        PUBLISH_DIR: ${{ steps.publish.outputs.dir }}
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+      run: |
+        $assemblyName = dotnet msbuild $env:PROJECT_PATH -getProperty:AssemblyName
+        if ($LASTEXITCODE -ne 0) { throw "Could not read the AssemblyName of $env:PROJECT_PATH." }
+        $name = "$($assemblyName | Select-Object -Last 1)".Trim()
+        $exe = Join-Path $env:PUBLISH_DIR "$name.exe"
+        if (-not (Test-Path -LiteralPath $exe)) { throw "The publish did not create $exe." }
+
+        $libraries = @(Get-ChildItem -LiteralPath $env:PUBLISH_DIR -Filter *.dll -File -Recurse)
+        if ($libraries.Count -gt 0) {
+            throw "Only the exe is released, but $($libraries.Name -join ', ') would have to ship next to it. Publish the app as a single file, and set IncludeNativeLibrariesForSelfExtract for native libraries."
+        }
+
+        $productVersion = "$((Get-Item -LiteralPath $exe).VersionInfo.ProductVersion)"
+        if ($productVersion -ne $env:VERSION -and -not $productVersion.StartsWith("$env:VERSION+")) {
+            throw "$exe carries version '$productVersion', not $env:VERSION. The project has to generate its assembly info for -p:Version to reach the exe."
+        }
+
+        $others = @(Get-ChildItem -LiteralPath $env:PUBLISH_DIR -File -Recurse | Where-Object FullName -ne $exe)
+        if ($others.Count -gt 0) { Write-Host "Not released: $($others.Name -join ', ')" }
+
+        $outputDir = [IO.Path]::GetFullPath($env:OUTPUT_DIR, $env:GITHUB_WORKSPACE)
+        New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+        $target = Join-Path $outputDir "$name-$env:RUNTIME.exe"
+        Copy-Item -LiteralPath $exe -Destination $target
+        "exe-path=$target" >> $env:GITHUB_OUTPUT

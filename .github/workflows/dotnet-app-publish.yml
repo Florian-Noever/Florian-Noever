@@ -1,0 +1,134 @@
+name: .NET App Publish
+
+on:
+  workflow_call:
+    inputs:
+      project-path:
+        description: Project of the app to publish. Its exe is the only file released, so it has to be published as a single file
+        required: true
+        type: string
+      publish-profile:
+        description: Publish profile to publish the app with. Leave empty to use the project's own publish settings
+        required: false
+        default: ''
+        type: string
+      runtimes:
+        description: JSON array of the runtime identifiers to release an exe for
+        required: false
+        default: '["win-x64"]'
+        type: string
+      test-project:
+        description: Project, solution or folder to run dotnet test on before anything is published. Leave empty to skip the tests
+        required: false
+        default: ''
+        type: string
+      dotnet-version:
+        description: SDK version selector
+        required: false
+        default: "10.0.x"
+        type: string
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+jobs:
+  version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+
+    permissions: {}
+
+    outputs:
+      value: ${{ steps.version.outputs.value }}
+
+    steps:
+      - name: Resolve version
+        id: version
+        uses: Florian-Noever/Florian-Noever/.github/actions/resolve-version@v1
+        with:
+          tag: ${{ github.event.release.tag_name }}
+
+  test:
+    name: Test
+    needs: version
+    if: ${{ inputs.test-project != '' }}
+    runs-on: windows-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: Florian-Noever/Florian-Noever/.github/actions/setup-dotnet@v1
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Test
+        shell: pwsh
+        env:
+          TEST_PROJECT: ${{ inputs.test-project }}
+        run: |
+          dotnet test $env:TEST_PROJECT -clp:ForceConsoleColor
+          if ($LASTEXITCODE -ne 0) { throw "dotnet test failed with exit code $LASTEXITCODE." }
+
+  pack:
+    name: Pack ${{ matrix.runtime }}
+    needs: [version, test]
+    # Also runs when the tests were skipped because there is no test project
+    if: ${{ !cancelled() && needs.version.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
+    runs-on: windows-latest
+
+    permissions:
+      contents: read
+
+    strategy:
+      matrix:
+        runtime: ${{ fromJSON(inputs.runtimes) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Pack
+        id: pack
+        uses: Florian-Noever/Florian-Noever/.github/actions/dotnet-app-pack@v1
+        with:
+          project-path: ${{ inputs.project-path }}
+          runtime: ${{ matrix.runtime }}
+          version: ${{ needs.version.outputs.value }}
+          publish-profile: ${{ inputs.publish-profile }}
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Upload exe
+        uses: actions/upload-artifact@v7
+        with:
+          name: exe-${{ matrix.runtime }}
+          path: ${{ steps.pack.outputs.exe-path }}
+          if-no-files-found: error
+
+  release:
+    name: Upload to release
+    needs: pack
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Download exes
+        uses: actions/download-artifact@v8
+        with:
+          pattern: exe-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Upload to release
+        uses: Florian-Noever/Florian-Noever/.github/actions/github-release-upload@v1
+        with:
+          files: artifacts/*.exe

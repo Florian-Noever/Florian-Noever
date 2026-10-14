@@ -1,0 +1,98 @@
+name: .NET App CI
+
+on:
+  workflow_call:
+    inputs:
+      project-path:
+        description: Project of the app to publish. Its exe has to be published as a single file
+        required: true
+        type: string
+      publish-profile:
+        description: Publish profile to publish the app with. Leave empty to use the project's own publish settings
+        required: false
+        default: ''
+        type: string
+      runtimes:
+        description: JSON array of the runtime identifiers to publish the app for
+        required: false
+        default: '["win-x64"]'
+        type: string
+      test-project:
+        description: Project, solution or folder to run dotnet test on. Leave empty to skip the tests
+        required: false
+        default: ''
+        type: string
+      dotnet-version:
+        description: SDK version selector
+        required: false
+        default: "10.0.x"
+        type: string
+      retention-days:
+        description: How long to keep the published exes
+        required: false
+        default: 14
+        type: number
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+jobs:
+  test:
+    name: Test
+    if: ${{ inputs.test-project != '' }}
+    runs-on: windows-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: Florian-Noever/Florian-Noever/.github/actions/setup-dotnet@v1
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Test
+        shell: pwsh
+        env:
+          TEST_PROJECT: ${{ inputs.test-project }}
+        run: |
+          dotnet test $env:TEST_PROJECT -clp:ForceConsoleColor
+          if ($LASTEXITCODE -ne 0) { throw "dotnet test failed with exit code $LASTEXITCODE." }
+
+  pack:
+    name: Pack ${{ matrix.runtime }}
+    runs-on: windows-latest
+
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: ${{ fromJSON(inputs.runtimes) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Pack
+        id: pack
+        uses: Florian-Noever/Florian-Noever/.github/actions/dotnet-app-pack@v1
+        with:
+          project-path: ${{ inputs.project-path }}
+          runtime: ${{ matrix.runtime }}
+          version: 0.0.0-ci.${{ github.run_number }}
+          publish-profile: ${{ inputs.publish-profile }}
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Keep exe
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.pack.outputs.exe-path }}
+          archive: false
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}

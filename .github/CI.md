@@ -1,6 +1,6 @@
 # Shared CI
 
-Reusable workflows and composite actions shared across `Florian-Noever` projects. Each workflow covers one kind of project: `dotnet-ci.yml` tests and publishes a .NET project, the `dotnet-framework-*` workflows test, build and release a .NET Framework app as a single exe, and the `vscode-extension-*` workflows check, test, pack and publish a VS Code extension. A repository that has both calls both and hands files from one to the other as an artifact.
+Reusable workflows and composite actions shared across `Florian-Noever` projects. Each workflow covers one kind of project: `dotnet-ci.yml` tests and publishes a .NET project, the `dotnet-framework-*` workflows test, build and release a .NET Framework app as a single exe, the `dotnet-app-*` workflows do the same for a .NET app with one exe per runtime, and the `vscode-extension-*` workflows check, test, pack and publish a VS Code extension. A repository that has both calls both and hands files from one to the other as an artifact.
 
 Workflows only wire jobs together. Everything bigger than a single command, such as packing, uploading to a release or publishing to a registry, lives in a composite action of its own, so it can be reused without the workflow around it.
 
@@ -15,13 +15,14 @@ uses: Florian-Noever/Florian-Noever/.github/actions/vsix-pack@v1
 
 | Action | Used by | Purpose |
 | --- | --- | --- |
-| `resolve-version` | vscode-extension, dotnet-framework | Validates a release tag and reports the version it carries |
-| `setup-dotnet` | dotnet, `dotnet-framework-pack` | Installs the SDK and restores the NuGet cache |
+| `resolve-version` | vscode-extension, dotnet-framework, dotnet-app | Validates a release tag and reports the version it carries |
+| `setup-dotnet` | dotnet, dotnet-app, `dotnet-framework-pack`, `dotnet-app-pack` | Installs the SDK and restores the NuGet cache |
 | `dotnet-publish` | dotnet | Publishes a .NET project once per publish profile |
 | `dotnet-framework-pack` | dotnet-framework | Builds a .NET Framework app with MSBuild after its optional tests, and checks that its exe carries the version and needs no other file |
+| `dotnet-app-pack` | dotnet-app | Publishes a .NET app for one runtime, and checks that its exe carries the version and needs no library next to it |
 | `vsix-pack` | vscode-extension | Installs, optionally checks, builds and tests an extension, packs it with vsce and checks the VSIX's version and contents |
 | `vscode-test` | vscode-extension, `vsix-pack` | Runs an extension's tests under a virtual display |
-| `github-release-upload` | vscode-extension, dotnet-framework | Uploads files to the release that triggered the run and, in a public repository, attests them |
+| `github-release-upload` | vscode-extension, dotnet-framework, dotnet-app | Uploads files to the release that triggered the run and, in a public repository, attests them |
 | `vs-marketplace-publish` | vscode-extension | Publishes a VSIX to the Visual Studio Marketplace through Microsoft Entra ID |
 | `open-vsx-verify` | vscode-extension | Checks the token, the namespace and the dependencies before anything is released |
 | `open-vsx-publish` | vscode-extension | Publishes a VSIX to Open VSX with a token |
@@ -32,6 +33,8 @@ uses: Florian-Noever/Florian-Noever/.github/actions/vsix-pack@v1
 | `dotnet-ci.yml` | Optional tests of a .NET project, and its output published per publish profile and kept as an artifact |
 | `dotnet-framework-ci.yml` | Optional tests and an MSBuild build of a .NET Framework app, whose exe is kept as a preview |
 | `dotnet-framework-publish.yml` | .NET Framework app tested and built from the release tag, its exe uploaded to the release and, in a public repository, attested |
+| `dotnet-app-ci.yml` | Optional tests of a .NET app, and its single-file exe published per runtime and kept as a preview |
+| `dotnet-app-publish.yml` | .NET app tested and published per runtime from the release tag, its exes uploaded to the release and, in a public repository, attested |
 | `vscode-extension-ci.yml` | Optional checks and VS Code tests, and a checked preview VSIX |
 | `vscode-extension-publish.yml` | VSIX built and tested from the release tag, uploaded and attested, then published to the Visual Studio Marketplace and Open VSX |
 | `dependabot-automerge.yml` | Squash-merges a Dependabot minor or patch update once the other jobs of the calling workflow passed |
@@ -270,6 +273,79 @@ A release is built from its tag, which must be a version such as `v1.2.3` or `v1
 The `Pack` job tests and builds the app from the tag without write permissions, and the `Upload to release` job attaches the exe to the release. Prereleases get their exe as well, since there is no store to hold them back from. Do not turn on immutable releases, since the exe is attached after the release is published. As for the other workflows, the permissions block belongs to the calling repository.
 
 The exe is only attested in a public repository. GitHub stores attestations of private repositories only on GitHub Enterprise Cloud and fails the step otherwise, so `github-release-upload` skips it there; a repository made public gets attested releases from then on.
+
+## Consuming: a .NET app
+
+The `dotnet-app-*` workflows are the counterpart of the `dotnet-framework-*` workflows for a .NET app that is published as a single file. Its only release is one exe per runtime on the GitHub release: no installer, no store, no package registry.
+
+`.github/workflows/ci.yml`:
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: Florian-Noever/Florian-Noever/.github/workflows/dotnet-app-ci.yml@v1
+    with:
+      project-path: VSC-Settings-Setup/VSC-Settings-Setup.csproj
+      publish-profile: FolderProfile
+      runtimes: '["win-x64", "win-arm64"]'
+      test-project: VSC-Settings-Setup.Tests/VSC-Settings-Setup.Tests.csproj
+```
+
+`.github/workflows/publish.yml`:
+
+```yaml
+name: Publish Release
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: dotnet-app-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  publish:
+    uses: Florian-Noever/Florian-Noever/.github/workflows/dotnet-app-publish.yml@v1
+    with:
+      project-path: VSC-Settings-Setup/VSC-Settings-Setup.csproj
+      publish-profile: FolderProfile
+      runtimes: '["win-x64", "win-arm64"]'
+      test-project: VSC-Settings-Setup.Tests/VSC-Settings-Setup.Tests.csproj
+```
+
+Both files pass the same inputs, since each workflow publishes the app on its own. An app without tests leaves out `test-project`, and one that is only released for `win-x64` leaves out `runtimes`.
+
+### Building and testing
+
+The workflows run `dotnet-app-pack` once for every runtime identifier in `runtimes`, a JSON array, and it publishes `project-path` for that runtime with `dotnet publish -c Release`. `publish-profile` names the publish profile to publish with, whose runtime identifier and publish directory are overridden, so one profile serves every runtime; without it, the project's own properties decide how the app is published. The exe is the only file released, so the app has to be published as a single file, and the run fails before anything is released if a DLL would have to ship next to it. Everything else in the publish directory, such as the `.pdb` or a config file, stays behind, so the app has to run without it. The exe is named `<assembly name>-<runtime>.exe`, such as `VSC-Settings-Setup-win-x64.exe`, so the files of different runtimes can sit on the same release.
+
+Every job that publishes runs on `windows-latest`, since the SDK only embeds the icon and the version resource into the exe on Windows. An exe for `win-arm64` is cross-compiled there as well, ReadyToRun included. `test-project` runs `dotnet test` on a project, solution or folder in a `Test` job of its own, also on Windows, once for all runtimes.
+
+In CI, the `Test` job and one `Pack` job per runtime run side by side. Each `Pack` job publishes every push as version `0.0.0-ci.<run number>` and keeps its exe as an artifact for `retention-days`, 14 by default, so each push leaves a build to try out.
+
+### Releasing
+
+The tag, the version and the product version check work as for a .NET Framework app. The tag is resolved first, then the `Test` job tests the app, and only after it passed does one `Pack` job per runtime publish it from the tag, all without write permissions. Once every `Pack` job passed, the `Upload to release` job attaches all exes to the release, so a release never gets the exe of one runtime but not the other. Prereleases, immutable releases and attestation are handled as for a .NET Framework app as well.
 
 ## Consuming: Dependabot auto-merge
 
