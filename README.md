@@ -38,7 +38,7 @@
 <p align="center">
   <a href="https://github.com/Florian-Noever/xliff-auto-sync">
     <img
-      src="https://socialify.git.ci/Florian-Noever/xliff-auto-sync/image?custom_language=VSCode&description=1&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FFlorian-Noever%2Fxliff-auto-sync%2Frefs%2Fheads%2Fmain%2Fassets%2Ficon.png&name=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto"
+      src="https://socialify.git.ci/Florian-Noever/xliff-auto-sync/image?custom_language=VSCode&description=1&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2FFlorian-Noever%2Fxliff-auto-sync%2Frefs%2Fheads%2Fmain%2Fassets%2Ficon-x128.png&name=1&owner=1&pattern=Transparent&pulls=1&stargazers=1&theme=Auto"
       width="49%"
       alt="XLIFF Auto Sync"
     />
