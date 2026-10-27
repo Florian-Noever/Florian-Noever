@@ -127,6 +127,7 @@ jobs:
           name: vsix
           path: ${{ steps.pack.outputs.vsix-path }}
           if-no-files-found: error
+          retention-days: 3
 
   release:
     name: Upload to release
