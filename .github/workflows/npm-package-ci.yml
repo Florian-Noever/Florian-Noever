@@ -1,0 +1,119 @@
+name: npm Package CI
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version selector of the check and package jobs. The test job takes its versions from test-matrix
+        required: false
+        default: "24"
+        type: string
+      check-command:
+        description: Command that runs the project's own checks after npm ci, such as type checks and linting. Leave empty to skip the check job
+        required: false
+        default: ''
+        type: string
+      test-command:
+        description: Command that runs the package's tests after npm ci, in bash on every combination of test-matrix. Leave empty to skip the test job
+        required: false
+        default: ''
+        type: string
+      test-matrix:
+        description: JSON matrix of the runners (os) and Node.js version selectors (node-version) the tests run on, optionally with include and exclude
+        required: false
+        default: '{"os": ["ubuntu-latest"], "node-version": ["24"]}'
+        type: string
+      retention-days:
+        description: How long to keep the packed preview
+        required: false
+        default: 14
+        type: number
+
+jobs:
+  check:
+    name: Check
+    if: ${{ inputs.check-command != '' }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check
+        run: ${{ inputs.check-command }}
+
+  test:
+    name: Test (${{ matrix.os }}, Node.js ${{ matrix.node-version }})
+    if: ${{ inputs.test-command != '' }}
+    runs-on: ${{ matrix.os }}
+
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(inputs.test-matrix) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # bash on Windows as well, so the command works the same on every runner
+      - name: Test
+        shell: bash
+        run: ${{ inputs.test-command }}
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pack
+        id: pack
+        uses: Florian-Noever/Florian-Noever/.github/actions/npm-pack@v1
+        with:
+          output-dir: artifacts
+
+      - name: Archive tarball
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ steps.pack.outputs.tarball-path }}
+          archive: false
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}

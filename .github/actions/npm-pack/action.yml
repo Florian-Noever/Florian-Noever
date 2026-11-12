@@ -1,0 +1,60 @@
+name: Pack npm Package
+description: Checks that package.json and package-lock.json carry the same version, packs the package with npm pack and lists the tarball's contents. Install the dependencies first if prepack or prepare scripts need them
+
+inputs:
+  version:
+    description: Version package.json must carry (without v prefix). Leave empty to skip the check
+    required: false
+    default: ''
+  output-dir:
+    description: Directory, relative to the workspace, the tarball is written to
+    required: false
+    default: artifacts
+
+outputs:
+  tarball-path:
+    description: Path of the tarball, relative to the workspace
+    value: ${{ steps.pack.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check version
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        actual="$(jq -r '.version // empty' package.json)"
+        if [ -n "$VERSION" ] && [ "$actual" != "$VERSION" ]; then
+          echo "::error::package.json is version $actual but the release is $VERSION."
+          exit 1
+        fi
+        if [ -f package-lock.json ]; then
+          locked="$(jq -r '.packages[""].version // .version // empty' package-lock.json)"
+          if [ "$locked" != "$actual" ]; then
+            echo "::error::package-lock.json is version ${locked:-unset} but package.json is $actual. Bump both with npm version <version> --no-git-tag-version."
+            exit 1
+          fi
+        fi
+
+    - name: Pack
+      id: pack
+      shell: bash
+      env:
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+      run: |
+        mkdir -p "$OUTPUT_DIR"
+        npm pack --pack-destination "$OUTPUT_DIR" --json | tee "$RUNNER_TEMP/npm-pack.json"
+        # Lifecycle scripts such as prepack print to the same output, ahead of the JSON. npm prints
+        # the JSON last, starting with a line that only holds [, so the last such line starts it.
+        filename="$(awk '/^\[$/ { json = "" } { json = json $0 "\n" } END { printf "%s", json }' "$RUNNER_TEMP/npm-pack.json" | jq -r '.[0].filename')"
+        echo "path=$OUTPUT_DIR/$filename" >> "$GITHUB_OUTPUT"
+
+    - name: List contents
+      shell: bash
+      env:
+        TARBALL_PATH: ${{ steps.pack.outputs.path }}
+      run: |
+        echo "::group::Contents of $TARBALL_PATH"
+        tar -tzf "$TARBALL_PATH"
+        echo "::endgroup::"

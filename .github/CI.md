@@ -1,6 +1,6 @@
 # Shared CI
 
-Reusable workflows and composite actions shared across `Florian-Noever` projects. Each workflow covers one kind of project: `dotnet-ci.yml` tests and publishes a .NET project, the `dotnet-framework-*` workflows test, build and release a .NET Framework app as a single exe, the `dotnet-app-*` workflows do the same for a .NET app with one exe per runtime, and the `vscode-extension-*` workflows check, test, pack and publish a VS Code extension. A repository that has both calls both and hands files from one to the other as an artifact.
+Reusable workflows and composite actions shared across `Florian-Noever` projects. Each workflow covers one kind of project: `dotnet-ci.yml` tests and publishes a .NET project, the `dotnet-framework-*` workflows test, build and release a .NET Framework app as a single exe, the `dotnet-app-*` workflows do the same for a .NET app with one exe per runtime, the `vscode-extension-*` workflows check, test, pack and publish a VS Code extension, and the `npm-package-*` workflows do the same for an npm package. A repository that has both calls both and hands files from one to the other as an artifact.
 
 Workflows only wire jobs together. Everything bigger than a single command, such as packing, uploading to a release or publishing to a registry, lives in a composite action of its own, so it can be reused without the workflow around it.
 
@@ -15,14 +15,15 @@ uses: Florian-Noever/Florian-Noever/.github/actions/vsix-pack@v1
 
 | Action | Used by | Purpose |
 | --- | --- | --- |
-| `resolve-version` | vscode-extension, dotnet-framework, dotnet-app | Validates a release tag and reports the version it carries |
+| `resolve-version` | vscode-extension, dotnet-framework, dotnet-app, npm-package | Validates a release tag and reports the version it carries |
 | `setup-dotnet` | dotnet, dotnet-app, `dotnet-framework-pack`, `dotnet-app-pack` | Installs the SDK and restores the NuGet cache |
 | `dotnet-publish` | dotnet | Publishes a .NET project once per publish profile |
 | `dotnet-framework-pack` | dotnet-framework | Builds a .NET Framework app with MSBuild after its optional tests, and checks that its exe carries the version and needs no other file |
 | `dotnet-app-pack` | dotnet-app | Publishes a .NET app for one runtime, and checks that its exe carries the version and needs no library next to it |
 | `vsix-pack` | vscode-extension | Installs, optionally checks, builds and tests an extension, packs it with vsce and checks the VSIX's version and contents |
 | `vscode-test` | vscode-extension, `vsix-pack` | Runs an extension's tests under a virtual display |
-| `github-release-upload` | vscode-extension, dotnet-framework, dotnet-app | Uploads files to the release that triggered the run and, in a public repository, attests them |
+| `npm-pack` | npm-package | Checks that `package.json` and `package-lock.json` carry the same version, packs a package with `npm pack` and lists the tarball's contents |
+| `github-release-upload` | vscode-extension, dotnet-framework, dotnet-app, npm-package | Uploads files to the release that triggered the run and, in a public repository, attests them |
 | `vs-marketplace-publish` | vscode-extension | Publishes a VSIX to the Visual Studio Marketplace through Microsoft Entra ID |
 | `open-vsx-verify` | vscode-extension | Checks the token, the namespace and the dependencies before anything is released |
 | `open-vsx-publish` | vscode-extension | Publishes a VSIX to Open VSX with a token |
@@ -37,6 +38,8 @@ uses: Florian-Noever/Florian-Noever/.github/actions/vsix-pack@v1
 | `dotnet-app-publish.yml` | .NET app tested and published per runtime from the release tag, its exes uploaded to the release and, in a public repository, attested |
 | `vscode-extension-ci.yml` | Optional checks and VS Code tests, and a checked preview VSIX |
 | `vscode-extension-publish.yml` | VSIX built and tested from the release tag, uploaded and attested, then published to the Visual Studio Marketplace and Open VSX |
+| `npm-package-ci.yml` | Optional checks, optional tests on a matrix of runners and Node.js versions, and a checked preview tarball |
+| `npm-package-publish.yml` | Tarball checked, tested and packed from the release tag, uploaded and attested, then published to npm through trusted publishing |
 | `dependabot-automerge.yml` | Squash-merges a Dependabot minor or patch update once the other jobs of the calling workflow passed |
 
 ## Consuming: a VS Code extension
@@ -347,6 +350,108 @@ In CI, the `Test` job and one `Pack` job per runtime run side by side. Each `Pac
 
 The tag, the version and the product version check work as for a .NET Framework app. The tag is resolved first, then the `Test` job tests the app, and only after it passed does one `Pack` job per runtime publish it from the tag, all without write permissions. Once every `Pack` job passed, the `Upload to release` job attaches all exes to the release, so a release never gets the exe of one runtime but not the other. Prereleases, immutable releases and attestation are handled as for a .NET Framework app as well.
 
+## Consuming: an npm package
+
+The `npm-package-*` workflows are for a package that goes to npm as `npm pack` packs it, such as a library or a command-line tool. Its release is that tarball, on the GitHub release and on npm.
+
+`.github/workflows/ci.yml`, here for a command-line tool that is tested on every Node.js line its `engines` allow, and on Windows:
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: Florian-Noever/Florian-Noever/.github/workflows/npm-package-ci.yml@v1
+    with:
+      check-command: npm run check-types && npm run lint
+      test-command: npm test && npm run test:e2e
+      test-matrix: |
+        {
+          "os": ["ubuntu-latest"],
+          "node-version": ["22", "24", "26"],
+          "include": [{ "os": "windows-latest", "node-version": "24" }]
+        }
+
+  automerge:
+    needs: ci
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: Florian-Noever/Florian-Noever/.github/workflows/dependabot-automerge.yml@v1
+```
+
+`.github/workflows/publish.yml`:
+
+```yaml
+name: Publish Release
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: npm-package-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  publish:
+    uses: Florian-Noever/Florian-Noever/.github/workflows/npm-package-publish.yml@v1
+    with:
+      check-command: npm run check-types && npm run lint
+      test-command: npm test && npm run test:e2e
+```
+
+Both files pass the same commands, since each workflow checks and tests the package on its own. A package without checks or tests leaves out `check-command` or `test-command`, and one that is only tested on Linux with Node.js 24 leaves out `test-matrix`.
+
+### Building and testing
+
+The package is an npm project at the repository root, and every job installs it with `npm ci`, so `package-lock.json` has to be committed. `npm-pack` packs it with `npm pack`, which runs the package's `prepack` and `prepare` scripts, so whatever they build needs no input here. The tarball is written as `artifacts/<name>-<version>.tgz`, or `artifacts/<scope>-<name>-<version>.tgz` for a scoped package, and the log lists the files in it. Before packing, the action checks that `package-lock.json` carries the same version as `package.json`.
+
+- `check-command` runs after `npm ci`, typically type checks and linting.
+- `test-command` runs the package's tests after `npm ci`. In CI it runs in bash on every combination of `test-matrix`, so the same command works on Windows.
+- `test-matrix` is a JSON matrix that lists runners in `os` and Node.js version selectors in `node-version`, optionally with `include` and `exclude` as in any matrix. Every combination needs both. Without it, the tests run on `ubuntu-latest` with Node.js 24.
+- `node-version` selects the Node.js of every job apart from the `Test` job in CI, 24 by default. Trusted publishing needs npm 11.5.1 or later, which Node.js 24 comes with and Node.js 22 does not, so keep it at 24 or later.
+
+In CI, the `Check` job runs `check-command`, the `Test` job runs `test-command` once per combination of `test-matrix`, and the `Package` job packs the package. Each job only runs when it has something to do, apart from `Package`, which keeps the tarball as an artifact for `retention-days`, 14 by default, so each push leaves a build to try out.
+
+### Releasing
+
+A release is built from its tag, which must be a plain version such as `v1.2.3`: npm only publishes a prerelease version under a dist-tag of its own, which the workflow does not set. `package.json` and `package-lock.json` must both carry that version, so bump them together with `npm version 1.2.3 --no-git-tag-version`. The run fails before releasing anything otherwise.
+
+The `Pack` job runs what the package's CI runs, in one job and once, on `ubuntu-latest` with `node-version`: `npm ci`, `check-command`, `test-command`, then the version check and packing. The tarball that passed is uploaded to the release and attested, and unless the release is a pre-release, the same file then goes to npm. A pre-release only gets the tarball on the GitHub release. Unticking *pre-release* afterwards does not publish it, since GitHub reports that as `released` rather than `published`; release a new version instead.
+
+A failed `npm` job can be retried with **Re-run failed jobs**; npm refuses a version it already has, so a retry never publishes one twice. Do not use *Re-run all jobs*: it packs the tarball again, which replaces the file on the release while npm keeps the first one. Do not turn on immutable releases either, since the tarball is attached after the release is published. As for the other workflows, the permissions block belongs to the calling repository.
+
+### Trusted publishing
+
+The `npm` job publishes through npm's trusted publishing: npm exchanges the job's GitHub OIDC token for the right to publish the package, so no npm token is stored anywhere, and adds provenance when the repository is public. The job runs in the environment `npm`, which GitHub creates on the first run; limiting its deployments to tags matching `v*` is optional hardening.
+
+npm accepts the token if it matches a trusted publisher of the package. For a reusable workflow, npm checks the filename of the calling workflow, not of `npm-package-publish.yml`, and both workflows need the `id-token: write` permission, which the calling repository's permissions block grants. Set up each package once:
+
+1. npm only offers trusted publishers for a package that exists. Publish the first version from your machine with `npm publish`, or create the package with `npm stage publish` and approve it on npmjs.com.
+2. In the package's settings on <https://www.npmjs.com>, add a trusted publisher for *GitHub Actions*: organization or user `Florian-Noever`, the repository's name, workflow filename `publish.yml` and environment name `npm`. Every field is case-sensitive.
+3. Allow `npm publish` as well. Since 2026-09-03, a new trusted publisher only allows `npm stage publish` unless told otherwise, which holds every version until a maintainer approves it with 2FA, while the workflow runs `npm publish`.
+4. Release within 48 hours. A trusted publisher that has not published by then expires and has to be created again. npm does not check it when it is saved, so that release is the test.
+
+With npm 11.15.0 or later and 2FA on the account, `npm trust github <package> --file publish.yml --repo Florian-Noever/<repository> --env npm --allow-publish` does steps 2 and 3 from the command line. The `repository` field of `package.json` has to point to the GitHub repository as well, since npm compares the two.
+
 ## Consuming: Dependabot auto-merge
 
 `dependabot-automerge.yml` merges a Dependabot pull request once the repository's own checks passed. Add it as the last job of the repository's CI, after every other job:
@@ -393,4 +498,4 @@ Things to remember:
 
 - The workflows, and actions that use other actions such as `vsix-pack` and `dotnet-framework-pack`, reference them by their **absolute** `@v1` path. A relative `./` path would resolve against the calling repository, which does not contain these actions. Bump those refs with a new major.
 - The vsce and ovsx versions are pinned as input defaults: `vsce-version` of `vsix-pack` and `vs-marketplace-publish`, and `ovsx-version` of `open-vsx-publish`. Dependabot does not see them, so bump them by hand and keep the two vsce pins equal.
-- Whoever can move `v1` decides what runs with the publishing identity of every extension that calls `vscode-extension-publish.yml@v1`. Pin the call to a commit SHA if you would rather not have it move implicitly.
+- Whoever can move `v1` decides what runs with the publishing identity of every extension and npm package that calls `vscode-extension-publish.yml@v1` or `npm-package-publish.yml@v1`. Pin the call to a commit SHA if you would rather not have it move implicitly.

@@ -1,0 +1,129 @@
+name: npm Package Publish
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version selector. Trusted publishing needs npm 11.5.1 or later, which Node.js 24 comes with and Node.js 22 does not
+        required: false
+        default: "24"
+        type: string
+      check-command:
+        description: Command that runs the project's own checks after npm ci, such as type checks and linting. Leave empty to skip it
+        required: false
+        default: ''
+        type: string
+      test-command:
+        description: Command that runs the package's tests after npm ci. Leave empty to skip the tests
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  pack:
+    name: Pack
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    outputs:
+      tarball-path: ${{ steps.pack.outputs.tarball-path }}
+
+    steps:
+      - name: Resolve version
+        id: version
+        uses: Florian-Noever/Florian-Noever/.github/actions/resolve-version@v1
+        with:
+          tag: ${{ github.event.release.tag_name }}
+          allow-prerelease: "false"
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.node-version }}
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check
+        if: ${{ inputs.check-command != '' }}
+        run: ${{ inputs.check-command }}
+
+      - name: Test
+        if: ${{ inputs.test-command != '' }}
+        run: ${{ inputs.test-command }}
+
+      - name: Pack
+        id: pack
+        uses: Florian-Noever/Florian-Noever/.github/actions/npm-pack@v1
+        with:
+          version: ${{ steps.version.outputs.value }}
+          output-dir: artifacts
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@v7
+        with:
+          name: tarball
+          path: ${{ steps.pack.outputs.tarball-path }}
+          if-no-files-found: error
+          retention-days: 3
+
+  release:
+    name: Upload to release
+    needs: pack
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Download tarball
+        uses: actions/download-artifact@v8
+        with:
+          name: tarball
+          path: artifacts
+
+      - name: Upload to release
+        uses: Florian-Noever/Florian-Noever/.github/actions/github-release-upload@v1
+        with:
+          files: ${{ needs.pack.outputs.tarball-path }}
+
+  npm:
+    name: npm
+    needs: [pack, release]
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    environment: npm
+
+    # Trusted publishing: npm exchanges the job's OIDC token for the right to publish, and adds
+    # provenance. It checks the token against the calling workflow, which needs id-token write too.
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download tarball
+        uses: actions/download-artifact@v8
+        with:
+          name: tarball
+          path: artifacts
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.node-version }}
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      # The tarball that was tested and attached to the release, so npm gets the same file. Without
+      # the leading ./, npm would read artifacts/<name>.tgz as a GitHub repository.
+      - name: Publish
+        env:
+          TARBALL_PATH: ${{ needs.pack.outputs.tarball-path }}
+        run: npm publish "./$TARBALL_PATH"
